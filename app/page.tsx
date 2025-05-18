@@ -532,7 +532,7 @@ export default function Home() {
                 <div className="relative rounded-lg overflow-hidden shadow-xl">
                   <div className="absolute inset-0 bg-gradient-to-br from-[#00A1DE]/80 to-[#009A44]/80 mix-blend-multiply"></div>
                   <img
-                    src="/placeholder.svg?height=600&width=800"
+                    src="/ai.jpeg"
                     alt="AI Analysis Dashboard"
                     className="w-full h-auto"
                   />

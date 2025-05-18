@@ -2,10 +2,16 @@ import { MongoClient } from 'mongodb'
 
 const uri = process.env.MONGODB_URI || "mongodb://localhost:27017"
 const options = {
-  // SSL/TLS Configuration
+  // SSL/TLS Configuration (choose one approach below)
+  
+  // APPROACH 1: For development/testing (less secure)
   tls: true,
-  tlsAllowInvalidCertificates: process.env.NODE_ENV !== 'production', // Only allow invalid certs in development
-  tlsInsecure: process.env.NODE_ENV !== 'production', // Only in development
+  tlsAllowInvalidCertificates: process.env.NODE_ENV !== 'production',
+  
+  // OR APPROACH 2: For production (more secure)
+  // tls: true,
+  // tlsCAFile: process.env.MONGODB_CA_FILE_PATH,
+  // tlsCertificateKeyFile: process.env.MONGODB_CERT_KEY_PATH,
   
   // Connection Pool Settings
   maxPoolSize: 10,
@@ -29,32 +35,24 @@ const options = {
 // Create a new MongoClient instance
 const client = new MongoClient(uri, options)
 
-// Create a reusable promise for the connection
 let clientPromise: Promise<MongoClient>
 
 if (!process.env.MONGODB_URI) {
   throw new Error('Please add your Mongo URI to .env.local')
 }
 
-// Initialize the connection promise
 clientPromise = (async () => {
   try {
     console.log('Connecting to MongoDB...')
     const connectedClient = await client.connect()
-    
-    // Verify connection
     await connectedClient.db().admin().ping()
     console.log('Successfully connected to MongoDB')
-    
     return connectedClient
   } catch (error) {
     console.error('Failed to connect to MongoDB:', error)
-    
-    // Close any existing connection
     await client.close().catch(() => {})
     throw error
   }
 })()
 
-// Export the promise
 export default clientPromise

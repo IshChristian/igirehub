@@ -2,10 +2,28 @@ import { MongoClient } from 'mongodb'
 
 const uri = process.env.MONGODB_URI || "mongodb://localhost:27017"
 const options = {
-  // Add any additional connection options here
-  maxPoolSize: 10, // Default pool size
-  connectTimeoutMS: 5000, // 5 seconds connection timeout
-  socketTimeoutMS: 30000, // 30 seconds socket timeout
+  // SSL/TLS Configuration
+  tls: true,
+  tlsAllowInvalidCertificates: process.env.NODE_ENV !== 'production', // Only allow invalid certs in development
+  tlsInsecure: process.env.NODE_ENV !== 'production', // Only in development
+  
+  // Connection Pool Settings
+  maxPoolSize: 10,
+  minPoolSize: 2,
+  
+  // Timeout Settings
+  connectTimeoutMS: 5000,
+  socketTimeoutMS: 30000,
+  
+  // Server Selection Timeout
+  serverSelectionTimeoutMS: 5000,
+  
+  // Retry Settings
+  retryWrites: true,
+  retryReads: true,
+  
+  // Heartbeat Frequency
+  heartbeatFrequencyMS: 10000
 }
 
 // Create a new MongoClient instance
@@ -23,11 +41,18 @@ clientPromise = (async () => {
   try {
     console.log('Connecting to MongoDB...')
     const connectedClient = await client.connect()
+    
+    // Verify connection
+    await connectedClient.db().admin().ping()
     console.log('Successfully connected to MongoDB')
+    
     return connectedClient
   } catch (error) {
     console.error('Failed to connect to MongoDB:', error)
-    throw error // Re-throw to handle in calling code
+    
+    // Close any existing connection
+    await client.close().catch(() => {})
+    throw error
   }
 })()
 

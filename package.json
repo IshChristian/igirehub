@@ -39,6 +39,7 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+    "africastalking": "^0.7.3",
     "assemblyai": "^4.12.2",
     "autoprefixer": "^10.4.20",
     "bcryptjs": "latest",
@@ -86,7 +87,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   },
-    "resolutions": {
+  "resolutions": {
     "react": "19.1.0",
     "react-dom": "19.1.0"
   }

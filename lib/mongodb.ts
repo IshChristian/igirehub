@@ -1,38 +1,47 @@
+// lib/mongodb.ts
 import { MongoClient } from 'mongodb';
 
 const uri = process.env.MONGODB_URI;
+if (!uri) {
+  throw new Error('MONGODB_URI environment variable not set');
+}
+
 const options = {
   // Connection settings
-  serverSelectionTimeoutMS: 5000, // Reduce from 30s to 5s
+  serverSelectionTimeoutMS: 10000, // Increased from 5000ms
   socketTimeoutMS: 30000,
   connectTimeoutMS: 10000,
   retryWrites: true,
   retryReads: true,
   
-  // TLS/SSL configuration for Atlas
+  // TLS/SSL configuration
   tls: true,
-  tlsAllowInvalidCertificates: false, // Set to true only for testing
+  tlsAllowInvalidCertificates: false, // Keep false for production
   
   // Connection pool settings
   maxPoolSize: 50,
-  minPoolSize: 10,
-  maxIdleTimeMS: 10000
+  minPoolSize: 5,
+  maxIdleTimeMS: 30000
 };
 
 let client;
 let clientPromise: Promise<MongoClient>;
 
+async function connectWithRetry() {
+  try {
+    client = new MongoClient(uri, options);
+    await client.connect();
+    console.log('Successfully connected to MongoDB');
+    return client;
+  } catch (error) {
+    console.error('MongoDB connection failed:', error);
+    await client?.close();
+    throw error;
+  }
+}
+
 if (!global._mongoClientPromise) {
-  client = new MongoClient(uri, options);
-  global._mongoClientPromise = client.connect()
-    .then(connectedClient => {
-      console.log('MongoDB connected successfully');
-      return connectedClient;
-    })
-    .catch(err => {
-      console.error('MongoDB connection error:', err);
-      throw err;
-    });
+  global._mongoClientPromise = connectWithRetry();
 }
 clientPromise = global._mongoClientPromise;
 

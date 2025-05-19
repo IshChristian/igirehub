@@ -1,28 +1,39 @@
-// lib/mongodb.ts
 import { MongoClient } from 'mongodb';
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Invalid/Missing environment variable: "MONGODB_URI"');
-}
-
 const uri = process.env.MONGODB_URI;
-const options = {};
+const options = {
+  // Connection settings
+  serverSelectionTimeoutMS: 5000, // Reduce from 30s to 5s
+  socketTimeoutMS: 30000,
+  connectTimeoutMS: 10000,
+  retryWrites: true,
+  retryReads: true,
+  
+  // TLS/SSL configuration for Atlas
+  tls: true,
+  tlsAllowInvalidCertificates: false, // Set to true only for testing
+  
+  // Connection pool settings
+  maxPoolSize: 50,
+  minPoolSize: 10,
+  maxIdleTimeMS: 10000
+};
 
 let client;
 let clientPromise: Promise<MongoClient>;
 
-if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
-  }
-  clientPromise = global._mongoClientPromise;
-} else {
-  // In production mode, it's best to not use a global variable
+if (!global._mongoClientPromise) {
   client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+  global._mongoClientPromise = client.connect()
+    .then(connectedClient => {
+      console.log('MongoDB connected successfully');
+      return connectedClient;
+    })
+    .catch(err => {
+      console.error('MongoDB connection error:', err);
+      throw err;
+    });
 }
+clientPromise = global._mongoClientPromise;
 
-// Export a module-scoped MongoClient promise
 export default clientPromise;

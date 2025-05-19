@@ -1,14 +1,28 @@
 import { NextResponse } from "next/server"
-import clientPromise from "@/lib/mongodb"
+import { MongoClient } from "mongodb"
 import bcrypt from "bcryptjs"
 import { cookies } from "next/headers"
 import { sign } from "jsonwebtoken"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
+// Configure MongoDB connection with explicit SSL options
+const uri = process.env.MONGODB_URI
+const options = {
+  ssl: true,
+  tls: true,
+  // You might need these options if you're having SSL issues
+  // tlsInsecure: process.env.NODE_ENV !== "production", // Only use in development
+  // tlsAllowInvalidCertificates: process.env.NODE_ENV !== "production", // Only use in development
+}
+
 export async function POST(request: Request) {
+  let client;
+
   try {
-    const client = await clientPromise
+    // Create a new client for each request to avoid connection issues
+    client = new MongoClient(uri, options)
+    await client.connect()
     const db = client.db()
 
     const { email, phone, password } = await request.json()
@@ -49,7 +63,6 @@ export async function POST(request: Request) {
       )
     }
 
-
     // Create JWT token
     const token = sign(
       {
@@ -62,7 +75,7 @@ export async function POST(request: Request) {
       { expiresIn: "7d" }
     )
 
-    const cookie = await cookies();
+    const cookie = cookies();
     
     cookie.set('userId', user._id);
     cookie.set({
@@ -87,5 +100,10 @@ export async function POST(request: Request) {
       { error: "Login failed" },
       { status: 500 }
     )
+  } finally {
+    // Make sure to close the connection when done
+    if (client) {
+      await client.close()
+    }
   }
 }

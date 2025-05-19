@@ -1,39 +1,32 @@
 import { MongoClient } from 'mongodb';
 
+if (!process.env.MONGODB_URI) {
+  throw new Error('Please add your MongoDB URI to .env.local');
+}
+
 const uri = process.env.MONGODB_URI;
 const options = {
-  // Connection settings
-  serverSelectionTimeoutMS: 5000, // Reduce from 30s to 5s
-  socketTimeoutMS: 30000,
-  connectTimeoutMS: 10000,
-  retryWrites: true,
-  retryReads: true,
-  
-  // TLS/SSL configuration for Atlas
+  ssl: true,
   tls: true,
-  tlsAllowInvalidCertificates: false, // Set to true only for testing
-  
-  // Connection pool settings
-  maxPoolSize: 50,
-  minPoolSize: 10,
-  maxIdleTimeMS: 10000
+  // Only use the following in development if needed
+  // tlsAllowInvalidCertificates: process.env.NODE_ENV !== 'production',
 };
 
 let client;
-let clientPromise: Promise<MongoClient>;
+let clientPromise;
 
-if (!global._mongoClientPromise) {
+if (process.env.NODE_ENV === 'development') {
+  // In development mode, use a global variable so that the value
+  // is preserved across module reloads caused by HMR (Hot Module Replacement).
+  if (!global._mongoClientPromise) {
+    client = new MongoClient(uri, options);
+    global._mongoClientPromise = client.connect();
+  }
+  clientPromise = global._mongoClientPromise;
+} else {
+  // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options);
-  global._mongoClientPromise = client.connect()
-    .then(connectedClient => {
-      console.log('MongoDB connected successfully');
-      return connectedClient;
-    })
-    .catch(err => {
-      console.error('MongoDB connection error:', err);
-      throw err;
-    });
+  clientPromise = client.connect();
 }
-clientPromise = global._mongoClientPromise;
 
 export default clientPromise;

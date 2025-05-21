@@ -157,8 +157,6 @@ This project is licensed under the MIT License. See [LICENSE](./LICENSE) for det
 For support or questions, open an issue or contact:
 
 * **Maintainer**: [ishimwechristia94@gmail.com](mailto:ishimwechristia94@gmail.com)
-* **Documentation**: [visit documentation](https://www.notion.so/IGIRE-SYSTEM-DOCUMENTATION-1f73ba8170a5809e955dd56395996c5e?pvs=4)
+* **SRS & SYSTEM DOCUMENTATION**: [visit documentation](https://www.notion.so/IGIRE-SYSTEM-DOCUMENTATION-1f73ba8170a5809e955dd56395996c5e?pvs=4)
 
 ---
-
-*See the [SRS document](docs/SRS.md) for detailed specifications.*

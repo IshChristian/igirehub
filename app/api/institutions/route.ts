@@ -62,7 +62,7 @@ export async function POST(request: Request) {
 
     const institution = {
       ...data,
-      password: hashedPassword,
+      password: "Password@1",
       id: `INST${Math.floor(1000 + Math.random() * 9000)}`,
       createdAt: new Date(),
       updatedAt: new Date()

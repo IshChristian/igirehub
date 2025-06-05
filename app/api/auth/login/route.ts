@@ -49,22 +49,27 @@ export async function POST(request: Request) {
       )
     }
 
+    // Prepare JWT payload
+    const jwtPayload: any = {
+      id: user._id,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    }
+    // Add department if present
+    if (user.department) {
+      jwtPayload.department = user.department
+    }
 
     // Create JWT token
     const token = sign(
-      {
-        id: user._id, // Changed from user.id to user._id (MongoDB default)
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-      },
+      jwtPayload,
       JWT_SECRET,
       { expiresIn: "7d" }
     )
 
-    const cookie = await cookies();
-    
-    cookie.set('userId', user._id);
+    const cookie = cookies()
+    cookie.set('userId', user._id.toString())
     cookie.set({
       name: "auth_token",
       value: token,
@@ -73,13 +78,24 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     })
+    // Set department cookie if present
+    if (user.department) {
+      cookie.set('department', user.department)
+    }
 
     // Don't return the password
     const { password: _, ...userWithoutPassword } = user
 
+    // Add department to response if present
+    const responseUser = { ...userWithoutPassword }
+    if (user.department) {
+      responseUser.department = user.department
+    }
+
     return NextResponse.json({
-      user: userWithoutPassword,
+      user: responseUser,
       token,
+      department: user.department || undefined,
     })
   } catch (error) {
     console.error("Error during login:", error)

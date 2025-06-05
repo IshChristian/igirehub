@@ -119,7 +119,16 @@ export default function AdminDashboard() {
 
     // Additional filter for institution users - only show complaints assigned to their department
     if (user?.role === "institution") {
-      return matchesStatus && matchesCategory && matchesSearch && complaint.assignedAgency === user.id
+      // Ensure department exists
+      if (!user.department) return false
+      // Show complaints where assignedAgency matches the user's department
+      return (
+        matchesStatus &&
+        matchesCategory &&
+        matchesSearch &&
+        complaint.assignedAgency &&
+        complaint.assignedAgency.toLowerCase() === user.department.toLowerCase()
+      )
     }
 
     return matchesStatus && matchesCategory && matchesSearch
@@ -862,7 +871,7 @@ export default function AdminDashboard() {
                                                 <option value="">Select Institution</option>
                                                 {institutions?.map((institution) => (
                                                   <option key={institution.id} value={institution.id}>
-                                                    {institution.name} ({institution.department})
+                                                    {institution.department}
                                                   </option>
                                                 ))}
                                               </select>

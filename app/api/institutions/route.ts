@@ -58,35 +58,35 @@ export async function POST(request: Request) {
 
     // Generate a random password and hash it
     const plainPassword = generateRandomPassword(12)
-    const hashedPassword = await hash(plainPassword, 12)
+    const hashedPassword = await hash("Password@1", 12)
 
     const institution = {
       ...data,
-      password: "Password@1",
+      password: hashedPassword,
       id: `INST${Math.floor(1000 + Math.random() * 9000)}`,
       createdAt: new Date(),
       updatedAt: new Date()
     }
 
     // Send SMS with password
-    const smsRes = await fetch("http://localhost:3000/api/send-sms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: data.phone,
-        text: `Welcome to IGIREHUB! Your account has been created. Your password is: ${plainPassword}`
-      })
-    })
-    if (!smsRes.ok) {
-      const smsErr = await smsRes.text()
-      console.error("SMS send failed:", smsErr)
-      return NextResponse.json(
-        { error: "Failed to send SMS" },
-        { status: 500 }
-      )
-    }
+    // const smsRes = await fetch("http://localhost:3000/api/send-sms", {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify({
+    //     to: data.phone,
+    //     text: `Welcome to IGIREHUB! Your account has been created. Your password is: ${plainPassword}`
+    //   })
+    // })
+    // if (!smsRes.ok) {
+    //   const smsErr = await smsRes.text()
+    //   console.error("SMS send failed:", smsErr)
+    //   return NextResponse.json(
+    //     { error: "Failed to send SMS" },
+    //     { status: 500 }
+    //   )
+    // }
 
-    console.log('sms send ok')
+    // console.log('sms send ok')
 
     const resultInstitution = await db.collection("institutions").insertOne(institution)
 
@@ -94,6 +94,7 @@ export async function POST(request: Request) {
       email: data.email,
       phone: data.phone,
       password: hashedPassword,
+      department: data.department,
       role: data.role || "institution",
       createdAt: new Date(),
       updatedAt: new Date()

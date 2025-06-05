@@ -45,12 +45,18 @@ export async function GET() {
       )
     }
 
-    // Aggregate coins from complaints where userId matches and status is "solved"
-    const agg = await db.collection("complaints").aggregate([
-      { $match: { userId: userId, status: "solved" } },
-      { $group: { _id: null, totalPoints: { $sum: "$pointsAwarded" } } }
-    ]).toArray()
-    const coins = agg.length > 0 ? agg[0].totalPoints : 0
+    // Fetch all complaints for this user with status "solved"
+    const complaints = await db.collection("complaints")
+      .find({ userId: userId, status: "solved" })
+      .toArray()
+
+    // Sum pointsAwarded, ensuring each is a number
+    const coins = complaints.reduce((sum, c) => {
+      const points = typeof c.pointsAwarded === "number"
+        ? c.pointsAwarded
+        : parseInt(c.pointsAwarded, 10) || 0
+      return sum + points
+    }, 0)
 
     const profileData: UserProfile = {
       id: user._id.toString(),

@@ -2,6 +2,16 @@ import { NextResponse } from "next/server"
 import clientPromise from "@/lib/mongodb"
 import { hash } from "bcryptjs"
 
+// Simple random password generator (A-Z, a-z, 0-9)
+function generateRandomPassword(length = 12) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+  let password = ""
+  for (let i = 0; i < length; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return password
+}
+
 export async function GET() {
   try {
     const client = await clientPromise
@@ -12,15 +22,14 @@ export async function GET() {
       .project({
         name: 1,
         department: 1,
-        category: 1  // Include as fallback
+        category: 1
       })
       .sort({ createdAt: -1 })
       .toArray()
 
-    // Transform to ensure consistent format
     const formattedInstitutions = institutions.map(inst => ({
       name: inst.name,
-      department: inst.department || inst.category // Use department if available, fallback to category
+      department: inst.department || inst.category
     }))
 
     return NextResponse.json(formattedInstitutions)
@@ -31,6 +40,7 @@ export async function GET() {
     )
   }
 }
+
 export async function POST(request: Request) {
   try {
     const client = await clientPromise
@@ -46,30 +56,51 @@ export async function POST(request: Request) {
       )
     }
 
-    // Hash password if provided
-    if (data.password) {
-      data.password = await hash(data.password, 12)
-    }
+    // Generate a random password and hash it
+    const plainPassword = generateRandomPassword(12)
+    const hashedPassword = await hash(plainPassword, 12)
 
     const institution = {
       ...data,
+      password: hashedPassword,
       id: `INST${Math.floor(1000 + Math.random() * 9000)}`,
       createdAt: new Date(),
       updatedAt: new Date()
     }
+
+    // Send SMS with password
+    const smsRes = await fetch("http://localhost:3000/api/send-sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: data.phone,
+        text: `Welcome to IGIREHUB! Your account has been created. Your password is: ${plainPassword}`
+      })
+    })
+    if (!smsRes.ok) {
+      const smsErr = await smsRes.text()
+      console.error("SMS send failed:", smsErr)
+      return NextResponse.json(
+        { error: "Failed to send SMS" },
+        { status: 500 }
+      )
+    }
+
+    console.log('sms send ok')
 
     const resultInstitution = await db.collection("institutions").insertOne(institution)
 
     const user = {
       email: data.email,
       phone: data.phone,
-      password: data.password,
+      password: hashedPassword,
       role: data.role || "institution",
       createdAt: new Date(),
       updatedAt: new Date()
     }
 
     const resultUser = await db.collection("users").insertOne(user)
+
 
     return NextResponse.json({
       institutionId: institution.id,
@@ -79,6 +110,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
+    console.log(error)
     return NextResponse.json(
       { error: "Failed to create institution and user" },
       { status: 500 }

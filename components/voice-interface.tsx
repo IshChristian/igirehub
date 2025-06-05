@@ -9,6 +9,7 @@ export default function VoiceInterface() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
 
+
   const startRecording = async () => {
     setStatus("recording")
     setError("")

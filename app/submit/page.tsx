@@ -15,10 +15,11 @@ import {
   Mic,
   ArrowLeft,
   ArrowRight,
+  Video,
 } from "lucide-react"
 import VoiceInterface from "@/components/voice-interface"
 
-type SubmissionMethod = "web" | "sms" | "ussd" | "voice"
+type SubmissionMethod = "web" | "sms" | "ussd" | "voice" | "video"
 type Category = "water" | "sanitation" | "roads" | "electricity" | "other"
 
 export default function SubmitPage() {
@@ -35,10 +36,12 @@ export default function SubmitPage() {
   const [locationError, setLocationError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
-  const [error, setError] = useState("")
+  // const [aiPrediction, setAiPrediction] = useState<{ category: string; confidence: number } | null>(null)
   const [aiPrediction, setAiPrediction] = useState<{ category: string; confidence: number } | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [locationPermission, setLocationPermission] = useState<"prompt" | "granted" | "denied">("prompt")
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [error, setError] = useState<string>("")
 
   useEffect(() => {
     setIsLoaded(true)
@@ -48,8 +51,7 @@ export default function SubmitPage() {
       setLocationError("Geolocation is not supported by your browser")
     }
   }, [])
-
-  const fetchLocationDetails = async (lat: number, lng: number) => {
+  const fetchLocationDetails = async (_lat: number, _lng: number) => {
     try {
       // In a real app, you would call a reverse geocoding API here
       // For demo purposes, we'll use mock data
@@ -134,8 +136,8 @@ export default function SubmitPage() {
       if (!response.ok) {
         throw new Error('Failed to submit complaint')
       }
-
-      const result = await response.json()
+      await response.json()
+      setIsSuccess(true)
       setIsSuccess(true)
 
       // Redirect to tracking page after 2 seconds
@@ -250,6 +252,17 @@ export default function SubmitPage() {
                 <Mic className="h-4 w-4 mr-2" />
                 Voice
               </button>
+              <button
+                className={`flex items-center px-4 py-2 font-medium text-sm transition-all duration-300 border-b-2 ${
+                  method === "video"
+                    ? "border-[#00A1DE] text-[#00A1DE]"
+                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+                onClick={() => setMethod("video")}
+              >
+                <Video className="h-4 w-4 mr-2" />
+                Video
+              </button>
             </div>
 
             {method === "web" ? (
@@ -307,38 +320,41 @@ export default function SubmitPage() {
                     )}
                   </label>
                   <div className="mb-3">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          setIsGettingLocation(true)
-                          const { lat, lng } = await getCurrentLocation()
-                          setCoordinates(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
-                          await fetchLocationDetails(lat, lng)
-                          setLocationPermission("granted")
-                        } catch (error) {
-                          setLocationPermission("denied")
-                          setLocationError("Please enable location services in your browser settings")
-                        } finally {
-                          setIsGettingLocation(false)
-                        }
-                      }}
-                      className="px-4 py-2 rounded-lg bg-[#009A44] hover:bg-[#008a3d] text-white font-medium transition-all duration-300 flex items-center justify-center w-full"
-                      disabled={isGettingLocation}
-                    >
-                      {isGettingLocation ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <>
-                          <MapPin className="h-4 w-4 mr-1" /> 
-                          {locationPermission === "granted" ? "Update My Location" : "Use My Current Location"}
-                        </>
-                      )}
-                    </button>
-                    {locationError && (
-                      <p className="text-red-500 text-sm mt-1 animate-fadeIn">{locationError}</p>
-                    )}
-                  </div>
+        {/* Hide button if locationPermission is granted */}
+        {locationPermission !== "granted" && (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                setIsGettingLocation(true)
+                const { lat, lng } = await getCurrentLocation()
+                setCoordinates(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+                await fetchLocationDetails(lat, lng)
+                setLocationPermission("granted")
+              } catch (error) {
+                setLocationPermission("denied")
+                setLocationError("Please enable location services in your browser settings")
+              } finally {
+                setIsGettingLocation(false)
+              }
+            }}
+            className="px-4 py-2 rounded-lg bg-[#009A44] hover:bg-[#008a3d] text-white font-medium transition-all duration-300 flex items-center justify-center w-full"
+            disabled={isGettingLocation}
+          >
+            {isGettingLocation ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <>
+                {"Use My Current Location"}
+                {locationPermission === "granted" ? "Update My Location" : "Use My Current Location"}
+              </>
+            )}
+          </button>
+        )}
+        {locationError && (
+          <p className="text-red-500 text-sm mt-1 animate-fadeIn">{locationError}</p>
+        )}
+      </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -391,7 +407,7 @@ export default function SubmitPage() {
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Igire Points:</span>
                     <span className="ml-2 text-[#00A1DE] font-bold">+50</span>
                   </div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">50 points = 1000 RWF Airtime</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400"></div>
                 </div>
 
                 <button
@@ -426,7 +442,7 @@ export default function SubmitPage() {
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Igire Points:</span>
                     <span className="ml-2 text-[#00A1DE] font-bold">+50</span>
                   </div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">50 points = 1000 RWF Airtime</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400"></div>
                 </div>
               </div>
             ) : method === "ussd" ? (
@@ -459,10 +475,10 @@ export default function SubmitPage() {
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Igire Points:</span>
                     <span className="ml-2 text-[#00A1DE] font-bold">+50</span>
                   </div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">50 points = 1000 RWF Airtime</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400"></div>
                 </div>
               </div>
-            ) : (
+            ) : method === "voice" ? (
               <div className="space-y-6">
                 <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg border border-gray-100 dark:border-gray-700 transition-all duration-300 hover:shadow-md">
                   <h3 className="font-medium mb-3 text-gray-900 dark:text-white flex items-center">
@@ -470,24 +486,125 @@ export default function SubmitPage() {
                     Voice Instructions
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                    Call <span className="font-bold text-[#00A1DE]">+250 791 364 641</span> to submit your complaint by
-                    voice.
+                    Call <span className="font-bold text-[#00A1DE]">+250 791 364 641</span> to submit your complaint by voice.
                   </p>
-
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-800 rounded-lg p-4 mb-4">
+                    <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">How to record your complaint:</h4>
+                    <ol className="list-decimal list-inside text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
+                      <li>Start by clearly stating your <span className="font-bold">full name</span>.</li>
+                      <li>Say your <span className="font-bold">location</span> in this order: <span className="font-semibold">district, sector, cell, village</span>.</li>
+                      <li>Describe your <span className="font-bold">complaint</span> in detail.</li>
+                    </ol>
+                    <p className="mt-2 text-xs text-yellow-700 dark:text-yellow-300">
+                      Example: "My name is Jane Doe. I am in Gasabo district, Remera sector, Nyabisindu cell, Village A. My complaint is about water shortage for the past week."
+                    </p>
+                  </div>
                   <div className="bg-white dark:bg-gray-700 p-4 rounded-lg border border-gray-200 dark:border-gray-600 mb-4">
                     <VoiceInterface />
                   </div>
                 </div>
-
                 <div className="flex items-center justify-between py-3 px-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 transition-all duration-300 hover:bg-gray-100 dark:hover:bg-gray-750">
                   <div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Igire Points:</span>
                     <span className="ml-2 text-[#00A1DE] font-bold">+50</span>
                   </div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">50 points = 1000 RWF Airtime</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400"></div>
                 </div>
               </div>
-            )}
+            ) : method === "video" ? (
+              <div className="space-y-6">
+                <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg border border-gray-100 dark:border-gray-700 transition-all duration-300 hover:shadow-md">
+                  <h3 className="font-medium mb-3 text-gray-900 dark:text-white flex items-center">
+                    <Video className="h-5 w-5 mr-2 text-[#00A1DE]" />
+                    Video Instructions
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                    You can record a video using your camera or upload a video file describing your complaint.
+                  </p>
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-800 rounded-lg p-4 mb-4">
+                    <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">How to record your complaint:</h4>
+                    <ol className="list-decimal list-inside text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
+                      <li>Start by clearly stating your <span className="font-bold">full name</span>.</li>
+                      <li>Say your <span className="font-bold">location</span> in this order: <span className="font-semibold">district, sector, cell, village</span>.</li>
+                      <li>Describe your <span className="font-bold">complaint</span> in detail.</li>
+                    </ol>
+                    <p className="mt-2 text-xs text-yellow-700 dark:text-yellow-300">
+                      Example: "My name is Jane Doe. I am in Gasabo district, Remera sector, Nyabisindu cell, Village A. My complaint is about water shortage for the past week."
+                    </p>
+                  </div>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault()
+                      setError("")
+                      setIsSubmitting(true)
+                      const formData = new FormData()
+                      if (videoFile) formData.append("video", videoFile)
+                      formData.append("district", district)
+                      formData.append("sector", sector)
+                      formData.append("cell", cell)
+                      formData.append("village", village)
+                      formData.append("category", category)
+                      try {
+                        const res = await fetch("/api/complaints/video", {
+                          method: "POST",
+                          body: formData,
+                        })
+                        if (!res.ok) throw new Error("Failed to submit video complaint")
+                        setIsSuccess(true)
+                        setVideoFile(null)
+                        setDistrict("")
+                        setSector("")
+                        setCell("")
+                        setVillage("")
+                        setTimeout(() => router.push("/track"), 2000)
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : "Failed to submit video complaint")
+                      } finally {
+                        setIsSubmitting(false)
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Upload or record your video
+                    </label>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      capture="environment"
+                      onChange={e => setVideoFile(e.target.files?.[0] || null)}
+                      className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600"
+                      required
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">District</label>
+                        <input type="text" value={district} onChange={e => setDistrict(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">Sector</label>
+                        <input type="text" value={sector} onChange={e => setSector(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">Cell</label>
+                        <input type="text" value={cell} onChange={e => setCell(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">Village</label>
+                        <input type="text" value={village} onChange={e => setVillage(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-[#00A1DE] hover:bg-[#0090c5] transition-all duration-300 hover:shadow-lg hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                      disabled={isSubmitting || !videoFile}
+                    >
+                      {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Submit Video Complaint"}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </main>

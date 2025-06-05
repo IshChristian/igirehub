@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("token", token)
 
       // Set cookies for server-side usage
-      document.cookie = `userId=${userData.id}; path=/; max-age=${60 * 60 * 24 * 7}` // 1 week
+      document.cookie = `userId=${userData._id}; path=/; max-age=${60 * 60 * 24 * 7}` // 1 week
       document.cookie = `sessionToken=${token}; path=/; max-age=${60 * 60 * 24 * 7}` // 1 week
     } catch (error) {
       console.error("Login error:", error)

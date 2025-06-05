@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import AIPredictionCard from "@/components/ai-prediction-card"
 import useSWR from "swr"
+import { utils as XLSXUtils, writeFile as XLSXWriteFile } from "xlsx"
 
 interface Complaint {
   id: string
@@ -97,6 +98,46 @@ export default function AnalyticsPage() {
   // View complaint details function
   const viewComplaintDetails = (complaintId: string) => {
     router.push(`/complaints/${complaintId}`)
+  }
+
+  // Export data as Excel
+  const handleExportExcel = () => {
+    if (!analyticsData) return
+    // Flatten unresolved complaints for Excel
+    const complaintsSheet = analyticsData.unresolvedComplaints.map((c) => ({
+      ID: c.id,
+      Description: c.description,
+      Category: c.category,
+      Status: c.status,
+      District: c.district,
+      Sector: c.sector,
+      Cell: c.cell,
+      Village: c.village,
+      "Created At": c.createdAt,
+      "Updated At": c.updatedAt,
+      "AI Confidence": c.aiConfidence,
+    }))
+    const wb = XLSXUtils.book_new()
+    const ws = XLSXUtils.json_to_sheet(complaintsSheet)
+    XLSXUtils.book_append_sheet(wb, ws, "Unresolved Complaints")
+    XLSXWriteFile(wb, "analytics_unresolved_complaints.xlsx")
+  }
+
+  // Export SVG chart as image
+  const handleExportSVG = () => {
+    const svg = document.querySelector("svg")
+    if (!svg) return
+    const serializer = new XMLSerializer()
+    const source = serializer.serializeToString(svg)
+    const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" })
+    const url = URL.createObjectURL(svgBlob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "analytics_chart.svg"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   if (!user || user.role !== "admin") {
@@ -185,10 +226,19 @@ export default function AnalyticsPage() {
               <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
             </div>
-
-            <button className="h-10 px-4 rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center transition-colors">
+            <button
+              className="h-10 px-4 rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center transition-colors"
+              onClick={handleExportExcel}
+            >
               <Download className="h-4 w-4 mr-2 text-gray-500" />
-              Export Data
+              Export Excel
+            </button>
+            <button
+              className="h-10 px-4 rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center transition-colors"
+              onClick={handleExportSVG}
+            >
+              <Download className="h-4 w-4 mr-2 text-gray-500" />
+              Export SVG
             </button>
           </div>
         </div>

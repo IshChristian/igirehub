@@ -7,6 +7,7 @@ import { useAuth } from "@/context/auth-context"
 import { CheckCircle2, Clock, FileText, MapPin, Bell, Gift, ArrowLeft, Home, ChevronRight, AlertCircle, Sparkles, Coins } from 'lucide-react'
 import useSWR from "swr"
 import confetti from "canvas-confetti"
+import ReactPlayer from "react-player"
 
 type ComplaintStatus = "submitted" | "in-progress" | "resolved"
 
@@ -19,6 +20,7 @@ interface Complaint {
   createdAt: string
   updatedAt: string
   audioUrl?: string | null
+  videoUrl?: string
   pointsAwarded: number
   assignedAgency?: string | null
 }
@@ -32,6 +34,14 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
+function getCookie(name: string) {
+  if (typeof document === "undefined") return null
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop()?.split(";").shift() || null
+  return null
+}
+
 export default function TrackPage() {
   const { user } = useAuth()
   const router = useRouter()
@@ -43,8 +53,10 @@ export default function TrackPage() {
   const [isLoaded, setIsLoaded] = useState(false)
   const confettiRef = useRef<HTMLDivElement>(null)
 
+  const userId = getCookie("userId")
+
   const { data, error, isLoading } = useSWR<Complaint[]>(
-    user ? "/api/track" : null,
+    user && userId ? `/api/track/user?userId=${userId}` : null,
     fetcher,
     {
       refreshInterval: 5000,
@@ -237,10 +249,6 @@ export default function TrackPage() {
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center group">
-                <ArrowLeft className="h-6 w-6 text-[#00A1DE] transition-transform group-hover:-translate-x-1" />
-                <span className="ml-2 text-gray-700 dark:text-gray-300">Back</span>
-              </Link>
-              <Link href="/" className="flex items-center group">
                 <Home className="h-6 w-6 text-[#009A44] transition-transform group-hover:scale-110" />
                 <span className="ml-2 text-gray-700 dark:text-gray-300">Home</span>
               </Link>
@@ -405,14 +413,6 @@ export default function TrackPage() {
                           </div>
                         </div>
 
-                        {selectedComplaint.assignedAgency && (
-                          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
-                            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                              Assigned Agency
-                            </h3>
-                            <p className="text-gray-900 dark:text-gray-100">{selectedComplaint.assignedAgency}</p>
-                          </div>
-                        )}
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
@@ -441,6 +441,21 @@ export default function TrackPage() {
                           </div>
                         )}
 
+                        {selectedComplaint.videoUrl && (
+  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700 mb-4">
+    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+      Video Recording
+    </h3>
+    <ReactPlayer
+      url={selectedComplaint.videoUrl}
+      controls
+      width="100%"
+      height="360px"
+      style={{ maxHeight: 400, background: "#000" }}
+    />
+<video src={selectedComplaint.videoUrl}></video>
+  </div>
+)}
                         <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
                           <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Timeline</h3>
                           <div className="relative">
@@ -504,31 +519,7 @@ export default function TrackPage() {
 
                         <div className="border-t border-gray-200 dark:border-gray-700 pt-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                           <div className="flex items-center">
-                            <label htmlFor="notifications" className="flex items-center cursor-pointer">
-                              <div className="relative">
-                                <input
-                                  id="notifications"
-                                  type="checkbox"
-                                  className="sr-only"
-                                  checked={notificationsEnabled}
-                                  onChange={() => setNotificationsEnabled(!notificationsEnabled)}
-                                />
-                                <div
-                                  className={`block w-10 h-6 rounded-full transition-colors duration-300 ${
-                                    notificationsEnabled ? "bg-[#00A1DE]" : "bg-gray-300 dark:bg-gray-600"
-                                  }`}
-                                ></div>
-                                <div
-                                  className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 ${
-                                    notificationsEnabled ? "transform translate-x-4" : ""
-                                  }`}
-                                ></div>
-                              </div>
-                              <div className="ml-3 text-sm font-medium flex items-center text-gray-700 dark:text-gray-300">
-                                <Bell className="h-4 w-4 mr-1" />
-                                SMS Notifications
-                              </div>
-                            </label>
+                            
                           </div>
 
                           {selectedComplaint.status === "resolved" && !isRedeemed[selectedComplaint.id] && (

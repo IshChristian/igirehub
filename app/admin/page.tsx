@@ -34,6 +34,7 @@ import {
 import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
 import Link from "next/link"
+import ReactPlayer from "react-player"
 
 interface Complaint {
   id: string
@@ -48,6 +49,7 @@ interface Complaint {
   cell: string
   village: string
   audioUrl?: string
+  videoUrl?: string
   userPhone?: string
   createdAt: string
   updatedAt: string
@@ -771,6 +773,21 @@ export default function AdminDashboard() {
                                         </div>
                                       )}
 
+                                      {complaint.videoUrl && (
+  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700 mb-4">
+    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+      Video Recording
+    </h3>
+    <ReactPlayer
+      url={complaint.videoUrl}
+      controls
+      width="100%"
+      height="360px"
+      style={{ maxHeight: 400, background: "#000" }}
+    />
+  </div>
+)}
+
                                       {complaint.userPhone && (
                                         <div className="flex items-center text-gray-600 dark:text-gray-400 text-sm mt-3 bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-800">
                                           <Phone className="h-4 w-4 mr-2 text-blue-500 dark:text-blue-400" />
@@ -895,10 +912,7 @@ export default function AdminDashboard() {
                                                 Assigned To
                                               </p>
                                               <p className="text-gray-900 dark:text-gray-100">
-                                                {complaint.assignedAgency
-                                                  ? institutions?.find((i) => i.id === complaint.assignedAgency)
-                                                      ?.name || "Unknown"
-                                                  : "Not assigned"}
+                                                {complaint.assignedAgency}
                                               </p>
                                             </div>
 

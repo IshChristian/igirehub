@@ -18,6 +18,7 @@ import {
   Video,
 } from "lucide-react"
 import VoiceInterface from "@/components/voice-interface"
+import VideoInterface from "@/components/video-interface"
 
 type SubmissionMethod = "web" | "sms" | "ussd" | "voice" | "video"
 type Category = "water" | "sanitation" | "roads" | "electricity" | "other"
@@ -512,98 +513,7 @@ export default function SubmitPage() {
                 </div>
               </div>
             ) : method === "video" ? (
-              <div className="space-y-6">
-                <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg border border-gray-100 dark:border-gray-700 transition-all duration-300 hover:shadow-md">
-                  <h3 className="font-medium mb-3 text-gray-900 dark:text-white flex items-center">
-                    <Video className="h-5 w-5 mr-2 text-[#00A1DE]" />
-                    Video Instructions
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                    You can record a video using your camera or upload a video file describing your complaint.
-                  </p>
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-800 rounded-lg p-4 mb-4">
-                    <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">How to record your complaint:</h4>
-                    <ol className="list-decimal list-inside text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
-                      <li>Start by clearly stating your <span className="font-bold">full name</span>.</li>
-                      <li>Say your <span className="font-bold">location</span> in this order: <span className="font-semibold">district, sector, cell, village</span>.</li>
-                      <li>Describe your <span className="font-bold">complaint</span> in detail.</li>
-                    </ol>
-                    <p className="mt-2 text-xs text-yellow-700 dark:text-yellow-300">
-                      Example: "My name is Jane Doe. I am in Gasabo district, Remera sector, Nyabisindu cell, Village A. My complaint is about water shortage for the past week."
-                    </p>
-                  </div>
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault()
-                      setError("")
-                      setIsSubmitting(true)
-                      const formData = new FormData()
-                      if (videoFile) formData.append("video", videoFile)
-                      formData.append("district", district)
-                      formData.append("sector", sector)
-                      formData.append("cell", cell)
-                      formData.append("village", village)
-                      formData.append("category", category)
-                      try {
-                        const res = await fetch("/api/complaints/video", {
-                          method: "POST",
-                          body: formData,
-                        })
-                        if (!res.ok) throw new Error("Failed to submit video complaint")
-                        setIsSuccess(true)
-                        setVideoFile(null)
-                        setDistrict("")
-                        setSector("")
-                        setCell("")
-                        setVillage("")
-                        setTimeout(() => router.push("/track"), 2000)
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : "Failed to submit video complaint")
-                      } finally {
-                        setIsSubmitting(false)
-                      }
-                    }}
-                    className="space-y-4"
-                  >
-                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                      Upload or record your video
-                    </label>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      capture="environment"
-                      onChange={e => setVideoFile(e.target.files?.[0] || null)}
-                      className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600"
-                      required
-                    />
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">District</label>
-                        <input type="text" value={district} onChange={e => setDistrict(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">Sector</label>
-                        <input type="text" value={sector} onChange={e => setSector(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">Cell</label>
-                        <input type="text" value={cell} onChange={e => setCell(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1 text-gray-700 dark:text-gray-300">Village</label>
-                        <input type="text" value={village} onChange={e => setVillage(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" required />
-                      </div>
-                    </div>
-                    <button
-                      type="submit"
-                      className="w-full flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-[#00A1DE] hover:bg-[#0090c5] transition-all duration-300 hover:shadow-lg hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                      disabled={isSubmitting || !videoFile}
-                    >
-                      {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Submit Video Complaint"}
-                    </button>
-                  </form>
-                </div>
-              </div>
+              <VideoInterface />
             ) : null}
           </div>
         </div>

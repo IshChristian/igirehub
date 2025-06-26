@@ -1,41 +1,20 @@
 import { NextResponse } from "next/server"
 import clientPromise from "@/lib/mongodb"
-import { hash } from "bcryptjs"
-
-// Simple random password generator (A-Z, a-z, 0-9)
-function generateRandomPassword(length = 12) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-  let password = ""
-  for (let i = 0; i < length; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return password
-}
 
 export async function GET() {
   try {
     const client = await clientPromise
     const db = client.db()
-    
+    // Find all users with role "institution" and project only name and department
     const institutions = await db.collection("institutions")
-      .find({})
-      .project({
-        name: 1,
-        department: 1,
-        category: 1
-      })
-      .sort({ createdAt: -1 })
+      .find({ role: "institution" }, { projection: { name: 1, department: 1, _id: 1 } })
       .toArray()
 
-    const formattedInstitutions = institutions.map(inst => ({
-      name: inst.name,
-      department: inst.department || inst.category
-    }))
-
-    return NextResponse.json(formattedInstitutions)
+    return NextResponse.json(institutions)
   } catch (error) {
+    console.error("Error fetching institutions:", error)
     return NextResponse.json(
-      { error: "Failed to fetch institutions" },
+      { error: error instanceof Error ? error.message : "Failed to fetch institutions" },
       { status: 500 }
     )
   }

@@ -23,30 +23,44 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, context: { params: { id: string } }) {
   try {
     const client = await clientPromise
     const db = client.db()
-    const data = await req.json()
+    const { id } = await context.params
+    const body = await request.json()
 
-    // Update by MongoDB _id
-    const filter = ObjectId.isValid(params.id)
-      ? { _id: new ObjectId(params.id) }
-      : { id: params.id }
+    // Only allow updating status and assignedAgency
+    const updateFields: any = {}
+    if (body.status) updateFields.status = body.status
+    if (body.assignedAgency) updateFields.assignedAgency = body.assignedAgency
 
-    const result = await db.collection("complaints").updateOne(
-      filter,
-      { $set: data }
-    )
-
-    if (result.modifiedCount === 0) {
-      return NextResponse.json({ error: "No changes made" }, { status: 400 })
+    if (Object.keys(updateFields).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    // Try to update by custom id first
+    let result = await db.collection("complaints").updateOne(
+      { id },
+      { $set: updateFields }
+    )
+
+    // If not found and id is a valid ObjectId, try by _id
+    if (result.matchedCount === 0 && ObjectId.isValid(id)) {
+      result = await db.collection("complaints").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateFields }
+      )
+    }
+
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: "Complaint not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true, updated: updateFields })
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to update complaint" },
+      { error: error instanceof Error ? error.message : "Failed to update complaint" },
       { status: 500 }
     )
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import clientPromise from "@/lib/mongodb"
-import { predictCategory } from "@/lib/ai-utils"
+import { ObjectId } from "mongodb"
+import { processComplaint } from "@/lib/ai-utils"
 import { cookies } from "next/headers"
 
 export async function GET() {
@@ -13,6 +14,7 @@ export async function GET() {
       .project({
         id: 1,
         description: 1,
+        translatedDescription: 1,
         category: 1,
         aiCategory: 1,
         aiConfidence: 1,
@@ -23,6 +25,10 @@ export async function GET() {
         cell: 1,
         village: 1,
         audioUrl: 1,
+        effects: 1,
+        consequences: 1,
+        severity: 1,
+        suggestedActions: 1,
         createdAt: 1,
         updatedAt: 1
       })
@@ -42,27 +48,31 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   try {
     const client = await clientPromise
     const db = client.db()
-    const data = await request.json()
+    const { id } = params
+    const body = await request.json()
 
-    const result = await db.collection("complaints").updateOne(
-      { id: params.id },
-      { $set: { ...data, updatedAt: new Date() } }
-    )
+    // Only allow updating status and assignedAgency
+    const updateFields: any = {}
+    if (body.status) updateFields.status = body.status
+    if (body.assignedAgency) updateFields.assignedAgency = body.assignedAgency
 
-    if (result.modifiedCount === 0) {
-      return NextResponse.json(
-        { error: "Complaint not found or not modified" },
-        { status: 404 }
-      )
+    if (Object.keys(updateFields).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 })
     }
 
-    // Get the updated complaint
-    const updatedComplaint = await db.collection("complaints").findOne({ id: params.id })
+    const result = await db.collection("complaints").updateOne(
+      { id },
+      { $set: updateFields }
+    )
 
-    return NextResponse.json(updatedComplaint)
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: "Complaint not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true, updated: updateFields })
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to update complaint" },
+      { error: error instanceof Error ? error.message : "Failed to update complaint" },
       { status: 500 }
     )
   }
@@ -72,30 +82,35 @@ export async function POST(request: Request) {
   try {
     const client = await clientPromise
     const db = client.db()
-    const data = await request.json()
-    
-    // Properly await cookies() call
     const cookieStore = await cookies()
     const userId = cookieStore.get("userId")?.value
+    const data = await request.json()
+    const language = data.language || 'rw' // Default to Kinyarwanda
 
-    // Use AI to predict category
-    const aiPrediction = await predictCategory(data.description)
+    // Process complaint with AI
+    const processed = await processComplaint(data.description, language)
 
     const complaint = {
       id: `C${Math.floor(1000 + Math.random() * 9000)}`,
       userId,
-      description: data.description,
-      category: data.category || aiPrediction.category,
+      complaint: data.description,
+      category: data.category || (processed.category ? processed.category.category : undefined),
+      translatedDescription: processed.translatedText,
       location: data.location,
       coordinates: data.coordinates,
       district: data.district,
       sector: data.sector,
       cell: data.cell,
-      village: data.village,
-      status: "submitted",
-      aiConfidence: aiPrediction.confidence,
-      aiCategory: aiPrediction.category,
-      assignedAgency: aiPrediction.suggestedAgency,
+      aiConfidence: processed.category ? processed.category.confidence : undefined,
+      aiCategory: processed.category ? processed.category.category : undefined,
+      assignedAgency: processed.category ? processed.category.suggestedAgency : undefined,
+      aiCategory: processed.category.category,
+      assignedAgency: processed.category.suggestedAgency,
+      effects: processed.effects,
+      consequences: processed.consequences,
+      severity: processed.severity,
+      suggestedActions: processed.suggestedActions,
+      language,
       submissionMethod: data.submissionMethod || "web",
       pointsAwarded: 50,
       createdAt: new Date(),
@@ -110,13 +125,10 @@ export async function POST(request: Request) {
         { $inc: { points: 50 } }
       )
     }
-
     return NextResponse.json({
-      id: complaint.id,
       ...complaint,
       _id: result.insertedId
     })
-
   } catch (error) {
     console.error("Error creating complaint:", error)
     return NextResponse.json(
@@ -125,4 +137,3 @@ export async function POST(request: Request) {
     )
   }
 }
-

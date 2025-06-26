@@ -1,58 +1,74 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
-import { useAuth } from "@/context/auth-context"
+import { useState, useEffect } from "react"
 import {
   Search,
-  ChevronRight,
-  ChevronUp,
-  Edit,
-  X,
-  UserPlus,
-  Trash2,
-  RefreshCw,
-  MessageSquare,
-  Phone,
-  BarChart3,
-  Users,
-  FileText,
   Filter,
-  Bell,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  Briefcase,
+  ChevronDown,
+  ChevronRight,
   MapPin,
   Calendar,
-  Headphones,
-  LogOut,
+  Phone,
+  MessageSquare,
+  Brain,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Zap,
+  Users,
+  FileText,
+  Bell,
   Download,
-  PieChart,
+  RefreshCw,
+  Edit,
+  Send,
+  Star,
+  Award,
+  Globe,
+  Smartphone,
+  Monitor,
+  Trash2,
 } from "lucide-react"
-import useSWR, { mutate } from "swr"
-import { toast } from "sonner"
-import Link from "next/link"
-import ReactPlayer from "react-player"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Progress } from "@/components/ui/progress"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+// Remove node:timers/promises import; use browser setInterval instead
 
 interface Complaint {
+  _id: { $oid: string }
   id: string
-  description: string
+  userId: string
   category: string
-  aiCategory: string
-  aiConfidence: number
-  status: "submitted" | "in-progress" | "resolved"
-  assignedAgency?: string
+  translatedDescription: string
+  location: string | null
+  coordinates: string
   district: string
   sector: string
   cell: string
-  village: string
+  aiConfidence: number
+  aiCategory: string
+  assignedAgency: string
+  effects: string[]
+  consequences: string[]
+  severity: "low" | "medium" | "high" | "critical"
+  suggestedActions: string[]
+  language: string
+  submissionMethod: "web" | "mobile" | "phone" | "sms"
+  pointsAwarded: number
+  createdAt: { $date: string }
+  updatedAt: { $date: string }
+  status?: "submitted" | "in-progress" | "resolved"
+  userPhone?: string
   audioUrl?: string
   videoUrl?: string
-  userPhone?: string
-  createdAt: string
-  updatedAt: string
 }
 
 interface Institution {
@@ -66,18 +82,25 @@ interface Institution {
   updatedAt: string
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+// Mock data based on the provided structure
+const mockComplaints: Complaint[] = []
 
-
-
-export default function AdminDashboard() {
-  const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<"complaints" | "institutions">("complaints")
-  const [timeRange, setTimeRange] = useState<"7d" | "30d" | "90d">("30d")
+export default function CitizenEngagementDashboard() {
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [severityFilter, setSeverityFilter] = useState("all")
   const [expandedComplaint, setExpandedComplaint] = useState<string | null>(null)
-  const [editMode, setEditMode] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<Partial<Complaint>>({})
+  const [showMessageDialog, setShowMessageDialog] = useState(false)
+  const [customMessage, setCustomMessage] = useState("")
+  const [status, setStatus] = useState("submitted")
+  const [assignedAgency, setAssignedAgency] = useState("")
+  const [complaintUpdates, setComplaintUpdates] = useState<Record<string, { status?: string; assignedAgency?: string }>>({})
+
+  const [activeTab, setActiveTab] = useState<"complaints" | "institutions">("complaints")
+  const [institutions, setInstitutions] = useState<Institution[]>([])
   const [showInstitutionForm, setShowInstitutionForm] = useState(false)
+  const [editInstitution, setEditInstitution] = useState<Institution | null>(null)
   const [newInstitution, setNewInstitution] = useState<Omit<Institution, "id" | "createdAt" | "updatedAt">>({
     name: "",
     email: "",
@@ -85,200 +108,125 @@ export default function AdminDashboard() {
     role: "institution",
     department: "",
   })
-  const [editInstitution, setEditInstitution] = useState<Institution | null>(null)
-  const [filters, setFilters] = useState({
-    status: "",
-    category: "",
-    search: "",
-  })
-  const [sendingNotification, setSendingNotification] = useState(false)
-  const [customMessage, setCustomMessage] = useState("")
-  const [showCustomMessageForm, setShowCustomMessageForm] = useState<string | null>(null)
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  // Add a new state variable for tracking when changes are being saved
-  const [isSavingChanges, setIsSavingChanges] = useState(false)
 
-  // Fetch data with real-time updates
-  const { data: complaints, mutate: mutateComplaints } = useSWR<Complaint[]>("/api/complaints", fetcher, {
-    refreshInterval: 5000, // Refresh every 5 seconds
-  })
-  const { data: institutions } = useSWR<Institution[]>(user?.role === "admin" ? "/api/institutions" : null, fetcher)
+  const [complaints, setComplaints] = useState<Complaint[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Filter complaints based on role and department
-  const filteredComplaints = complaints?.filter((complaint) => {
-    // Base filters for search, status, category
-    const matchesStatus = !filters.status || complaint.status === filters.status
-    const matchesCategory =
-      !filters.category ||
-      [complaint.category, complaint.aiCategory].some((c) => c.toLowerCase().includes(filters.category.toLowerCase()))
-    const matchesSearch =
-      !filters.search ||
-      [complaint.description, complaint.id, complaint.district, complaint.sector].some((f) =>
-        f.toLowerCase().includes(filters.search.toLowerCase()),
-      )
+  const [user, setUser] = useState<{ name?: string; email?: string; role?: string } | null>(null);
 
-    // Additional filter for institution users - only show complaints assigned to their department
-    if (user?.role === "institution") {
-      // Ensure department exists
-      if (!user.department) return false
-      // Show complaints where assignedAgency matches the user's department
-      return (
-        matchesStatus &&
-        matchesCategory &&
-        matchesSearch &&
-        complaint.assignedAgency &&
-        complaint.assignedAgency.toLowerCase() === user.department.toLowerCase()
-      )
+  // Add useEffect for data fetching
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // setLoading(true)
+        // Fetch complaints
+        const complaintsResponse = await fetch("/api/complaints/joined")
+        if (complaintsResponse.ok) {
+          const complaintsData = await complaintsResponse.json()
+          setComplaints(complaintsData)
+        }
+
+        // Fetch institutions
+        const institutionsResponse = await fetch("/api/institutions")
+        if (institutionsResponse.ok) {
+          const institutionsData = await institutionsResponse.json()
+          setInstitutions(institutionsData)
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error)
+      } finally {
+        setLoading(false)
+      }
     }
+    const intervalId = window.setInterval(() => {
+      fetchData()
+    }, 3000) // Refresh data every 3 seconds
 
-    return matchesStatus && matchesCategory && matchesSearch
-  })
+    // Initial fetch
+    fetchData()
 
-  // Update the updateComplaint function to show loading state
-  const updateComplaint = async (id: string, data: Partial<Complaint>) => {
-    try {
-      setIsSavingChanges(true)
-      const response = await fetch(`/api/complaints/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
+    return () => window.clearInterval(intervalId)
+  }, [])
 
-      if (!response.ok) throw new Error("Failed to update complaint")
-
-      // Find the full complaint object
-      const complaint = complaints?.find((c) => c.id === id)
-
-      // Send SMS if assigned agency changed and has phone
-      if (data.assignedAgency && complaint) {
-        const institution = institutions?.find((i) => i.id === data.assignedAgency)
-
-        if (institution?.phone) {
-          await sendSMSNotification(institution.phone, complaint, "institution")
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch {
+          setUser(null);
         }
       }
+    }
+  }, []);
 
-      // Send SMS to user if status changed and user has phone
-      if (data.status && data.status !== complaint?.status && complaint?.userPhone) {
-        await sendStatusUpdateToUser(complaint.userPhone, data.status, complaint.id)
-      }
-
-      mutateComplaints()
-      toast.success("Complaint updated successfully")
-      setEditMode(null)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Update failed")
-    } finally {
-      setIsSavingChanges(false)
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case "low":
+        return "bg-green-100 text-green-800 border-green-200"
+      case "medium":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+      case "high":
+        return "bg-orange-100 text-orange-800 border-orange-200"
+      case "critical":
+        return "bg-red-100 text-red-800 border-red-200"
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200"
     }
   }
 
-  // Send SMS via PindoTest
-  const sendSMSNotification = async (phone: string, complaint: Complaint, recipientType: "institution" | "user") => {
-    try {
-      let message = ""
-
-      if (recipientType === "institution") {
-        message = `New complaint assigned: ${complaint.description.substring(0, 50)}... 
-        Location: ${complaint.district}, ${complaint.sector}
-        Status: ${complaint.status}`
-      } else {
-        // Message for user
-        message = `Your complaint about "${complaint.description.substring(0, 30)}..." has been updated.
-        Status: ${complaint.status}
-        Thank you for your report.`
-      }
-
-      const response = await fetch("/api/send-sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: phone,
-          text: message,
-        }),
-      })
-
-      if (!response.ok) throw new Error("Failed to send SMS")
-
-      toast.success(`SMS notification sent to ${recipientType}`)
-    } catch (error) {
-      console.error("SMS sending failed:", error)
-      toast.error("Failed to send SMS notification")
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "submitted":
+        return "bg-blue-100 text-blue-800 border-blue-200"
+      case "in-progress":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+      case "resolved":
+        return "bg-green-100 text-green-800 border-green-200"
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200"
     }
   }
 
-  // Send custom SMS to user
-  const sendCustomSMSToUser = async (id: string) => {
-    if (!customMessage) {
-      toast.error("Please enter a message")
-      return
-    }
-
-    try {
-      setSendingNotification(true)
-      const complaint = complaints?.find((c) => c.id === id)
-
-      if (!complaint?.userPhone) {
-        toast.error("User phone number not available")
-        return
-      }
-
-      const response = await fetch("/api/send-sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: complaint.userPhone,
-          text: customMessage,
-        }),
-      })
-
-      if (!response.ok) throw new Error("Failed to send SMS")
-
-      toast.success("Custom notification sent to user")
-      setCustomMessage("")
-      setShowCustomMessageForm(null)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to send notification")
-    } finally {
-      setSendingNotification(false)
+  const getSubmissionIcon = (method: string) => {
+    switch (method) {
+      case "web":
+        return <Monitor className="h-4 w-4" />
+      case "mobile":
+        return <Smartphone className="h-4 w-4" />
+      case "phone":
+        return <Phone className="h-4 w-4" />
+      case "sms":
+        return <MessageSquare className="h-4 w-4" />
+      default:
+        return <Globe className="h-4 w-4" />
     }
   }
 
-  // Send status update SMS to user
-  const sendStatusUpdateToUser = async (phone: string, status: string, complaintId: string) => {
-    try {
-      let message = ""
+  const filteredComplaints = complaints.filter((complaint) => {
+    const matchesSearch =
+      complaint.translatedDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      complaint.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      complaint.district.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesStatus = statusFilter === "all" || complaint.status === statusFilter
+    const matchesSeverity = severityFilter === "all" || complaint.severity === severityFilter
 
-      switch (status) {
-        case "in-progress":
-          message = `Update on your complaint #${complaintId}: Your report is now being processed. We're working on resolving the issue. Thank you for bringing this to our attention.`
-          break
-        case "resolved":
-          message = `Good news! Your complaint #${complaintId} has been resolved. Thank you for your patience and for helping us improve our services.`
-          break
-        default:
-          message = `Your complaint #${complaintId} status has been updated to: ${status}. Thank you for your report.`
-      }
+    return matchesSearch && matchesStatus && matchesSeverity
+  })
 
-      const response = await fetch("/api/send-sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: phone,
-          text: message,
-        }),
-      })
-
-      if (!response.ok) throw new Error("Failed to send status update SMS")
-
-      toast.success("Status update notification sent to user")
-    } catch (error) {
-      console.error("Status SMS sending failed:", error)
-      toast.error("Failed to send status update notification")
-    }
+  const stats = {
+    total: complaints.length,
+    submitted: complaints.filter((c) => c.status === "submitted").length,
+    inProgress: complaints.filter((c) => c.status === "in-progress").length,
+    resolved: complaints.filter((c) => c.status === "resolved").length,
+    avgConfidence:
+      complaints.length > 0
+        ? Math.round(complaints.reduce((acc, c) => acc + c.aiConfidence, 0) / complaints.length)
+        : 0,
+    totalPoints: complaints.reduce((acc, c) => acc + c.pointsAwarded, 0),
   }
 
-  // Institution actions
   const createInstitution = async () => {
     try {
       const response = await fetch("/api/institutions", {
@@ -289,8 +237,8 @@ export default function AdminDashboard() {
 
       if (!response.ok) throw new Error("Failed to create institution")
 
-      mutate("/api/institutions")
-      toast.success("Institution created")
+      const createdInstitution = await response.json()
+      setInstitutions([...institutions, createdInstitution])
       setShowInstitutionForm(false)
       setNewInstitution({
         name: "",
@@ -300,7 +248,7 @@ export default function AdminDashboard() {
         department: "",
       })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Creation failed")
+      console.error("Error creating institution:", error)
     }
   }
 
@@ -316,11 +264,11 @@ export default function AdminDashboard() {
 
       if (!response.ok) throw new Error("Failed to update institution")
 
-      mutate("/api/institutions")
-      toast.success("Institution updated")
+      const updatedInstitution = await response.json()
+      setInstitutions(institutions.map((inst) => (inst.id === editInstitution.id ? updatedInstitution : inst)))
       setEditInstitution(null)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Update failed")
+      console.error("Error updating institution:", error)
     }
   }
 
@@ -334,967 +282,937 @@ export default function AdminDashboard() {
 
       if (!response.ok) throw new Error("Failed to delete institution")
 
-      mutate("/api/institutions")
-      toast.success("Institution deleted")
+      setInstitutions(institutions.filter((inst) => inst.id !== id))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Deletion failed")
+      console.error("Error deleting institution:", error)
     }
   }
 
-  // UI helpers
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "submitted":
-        return "bg-amber-500"
-      case "in-progress":
-        return "bg-[#00A1DE]"
-      case "resolved":
-        return "bg-emerald-500"
-      default:
-        return "bg-gray-500"
-    }
+ async function updateComplaint(id, update) {
+  const res = await fetch(`/api/complaints/${id}`, { // <-- singular "complaint"
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+  return await res.json();
+}
+
+  // Helper functions to get current values
+  const getCurrentStatus = (complaint: Complaint) => {
+    return complaintUpdates[complaint.id]?.status || complaint.status || "submitted"
   }
 
-  const getStatusBgColor = (status: string) => {
-    switch (status) {
-      case "submitted":
-        return "bg-amber-50 text-amber-700 border-amber-200"
-      case "in-progress":
-        return "bg-blue-50 text-blue-700 border-blue-200"
-      case "resolved":
-        return "bg-emerald-50 text-emerald-700 border-emerald-200"
-      default:
-        return "bg-gray-50 text-gray-700 border-gray-200"
-    }
+  const getCurrentAssignedAgency = (complaint: Complaint) => {
+    return complaintUpdates[complaint.id]?.assignedAgency || complaint.assignedAgency || ""
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "submitted":
-        return <AlertTriangle className="h-4 w-4 mr-2" />
-      case "in-progress":
-        return <Clock className="h-4 w-4 mr-2" />
-      case "resolved":
-        return <CheckCircle className="h-4 w-4 mr-2" />
-      default:
-        return null
-    }
+  // Helper function to update complaint updates state
+  const setComplaintUpdate = (complaintId: string, field: 'status' | 'assignedAgency', value: string) => {
+    setComplaintUpdates(prev => ({
+      ...prev,
+      [complaintId]: {
+        ...prev[complaintId],
+        [field]: value
+      }
+    }))
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString()
-  }
-
-  // Calculate statistics
-  const stats = {
-    total: filteredComplaints?.length || 0,
-    submitted: filteredComplaints?.filter((c) => c.status === "submitted").length || 0,
-    inProgress: filteredComplaints?.filter((c) => c.status === "in-progress").length || 0,
-    resolved: filteredComplaints?.filter((c) => c.status === "resolved").length || 0,
-  }
-
-  // Check if user is authorized to access the dashboard
-  if (!user || (user.role !== "admin" && user.role !== "institution")) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="max-w-md w-full p-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-            <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-red-600 dark:text-red-400 mb-2">Unauthorized Access</h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-6">
-            You do not have permission to view this dashboard. Please contact an administrator if you believe this is an
-            error.
-          </p>
-          <a
-            href="/"
-            className="inline-flex items-center px-4 py-2 bg-[#00A1DE] text-white rounded-lg hover:bg-[#0090c5] transition-colors"
-          >
-            Return to Home
-          </a>
-        </div>
-      </div>
-    )
-  }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Dashboard Header */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                {user.role === "admin" ? (
-                  <>
-                    <BarChart3 className="h-6 w-6 mr-2 text-[#00A1DE]" />
-                    Admin Dashboard
-                  </>
-                ) : (
-                  <>
-                    <Briefcase className="h-6 w-6 mr-2 text-[#00A1DE]" />
-                    Institution Dashboard
-                  </>
-                )}
-              </h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {user.role === "admin"
-                  ? "Manage complaints and institutions"
-                  : `Manage complaints for ${user.department}`}
-              </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
+                  <Users className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900">IJWI RWANJYE</h1>
+                  <p className="text-sm text-slate-600">AI-Powered Complaint Management System</p>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              
-              <div className="flex items-center">
-                <div className="h-8 w-8 rounded-full bg-[#00A1DE] text-white flex items-center justify-center font-medium">
-                  {user.name?.charAt(0) || "U"}
-                </div>
-                <span className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {user.name || user.email || "User"}
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    localStorage.removeItem("user")
-                    window.location.href = "/auth/login"
-                  }
-                }}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center"
-              >
-                <LogOut className="h-3.5 w-3.5 mr-1.5" />
-                Logout
-              </button>
+             
+              <div className="flex items-center space-x-4">
+  {user ? (
+    <div className="relative group">
+      <button className="flex items-center space-x-2 p-2 rounded-full hover:bg-gray-100">
+        <Avatar>
+          <AvatarFallback>
+            {user.name ? user.name[0] : "U"}
+          </AvatarFallback>
+        </Avatar>
+        <span className="font-medium text-slate-900">{user.name || "User"}</span>
+        <ChevronDown className="h-4 w-4" />
+      </button>
+      <div className="absolute right-0 w-56 mt-2 py-2 bg-white border border-slate-200 rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50">
+        <div className="px-4 py-2 text-sm text-slate-900 font-semibold">{user.name}</div>
+        <div className="px-4 py-2 text-xs text-slate-600">{user.email}</div>
+        <div className="px-4 py-2 text-xs text-slate-500">Role: {user.role}</div>
+        <div className="border-t border-slate-100"></div>
+        <button
+          className="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+          onClick={() => {
+            localStorage.removeItem("user");
+            setUser(null);
+            window.location.href = "/auth/login";
+          }}
+        >
+          Logout
+        </button>
+      </div>
+    </div>
+  ) : (
+    <Button asChild>
+      <a href="/auth/login">Sign in</a>
+    </Button>
+  )}
+</div>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center">
-              <div className="p-3 rounded-lg bg-purple-100 dark:bg-purple-900/30 mr-4">
-                <FileText className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
+          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-100 text-sm font-medium">Total Complaints</p>
+                  <p className="text-3xl font-bold">{stats.total}</p>
+                </div>
+                <FileText className="h-8 w-8 text-blue-200" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Complaints</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center">
-              <div className="p-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 mr-4">
-                <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+          <Card className="bg-gradient-to-r from-amber-500 to-orange-500 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-amber-100 text-sm font-medium">Submitted</p>
+                  <p className="text-3xl font-bold">{stats.submitted}</p>
+                </div>
+                <Clock className="h-8 w-8 text-amber-200" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Submitted</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.submitted}</p>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center">
-              <div className="p-3 rounded-lg bg-blue-100 dark:bg-blue-900/30 mr-4">
-                <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <Card className="bg-gradient-to-r from-yellow-500 to-amber-500 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-yellow-100 text-sm font-medium">In Progress</p>
+                  <p className="text-3xl font-bold">{stats.inProgress}</p>
+                </div>
+                <RefreshCw className="h-8 w-8 text-yellow-200" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">In Progress</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.inProgress}</p>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center">
-              <div className="p-3 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 mr-4">
-                <CheckCircle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+          <Card className="bg-gradient-to-r from-green-500 to-emerald-500 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-100 text-sm font-medium">Resolved</p>
+                  <p className="text-3xl font-bold">{stats.resolved}</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-green-200" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Resolved</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.resolved}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-purple-100 text-sm font-medium">AI Confidence</p>
+                  <p className="text-3xl font-bold">{stats.avgConfidence}%</p>
+                </div>
+                <Brain className="h-8 w-8 text-purple-200" />
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-r from-pink-500 to-rose-500 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-pink-100 text-sm font-medium">Total Points</p>
+                  <p className="text-3xl font-bold">{isNaN(stats.totalPoints) ? "" : stats.totalPoints}</p>
+                </div>
+                <Award className="h-8 w-8 text-pink-200" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Tabs - Only show Institutions tab for admin */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
-          <div className="flex border-b border-gray-200 dark:border-gray-700">
-            <button
-              className={`px-6 py-4 font-medium text-sm flex items-center ${
-                activeTab === "complaints"
-                  ? "border-b-2 border-[#00A1DE] text-[#00A1DE]"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}
-              onClick={() => setActiveTab("complaints")}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Complaints
-            </button>
-            {user.role === "admin" && (
+        {/* Tab Navigation */}
+        <Card className="mb-8">
+          <CardContent className="p-0">
+            <div className="flex border-b border-slate-200">
+              <button
+                className={`px-6 py-4 font-medium text-sm flex items-center ${
+                  activeTab === "complaints"
+                    ? "border-b-2 border-blue-600 text-blue-600"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+                onClick={() => setActiveTab("complaints")}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Complaints
+              </button>
               <button
                 className={`px-6 py-4 font-medium text-sm flex items-center ${
                   activeTab === "institutions"
-                    ? "border-b-2 border-[#00A1DE] text-[#00A1DE]"
-                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    ? "border-b-2 border-blue-600 text-blue-600"
+                    : "text-slate-500 hover:text-slate-700"
                 }`}
                 onClick={() => setActiveTab("institutions")}
               >
                 <Users className="h-4 w-4 mr-2" />
                 Institutions
               </button>
-            )}
-          </div>
-          <div className="flex justify-end">
-            <Link href="/analytics"
-              className="px-6 py-4 font-medium text-sm text-[#00A1DE] flex items-center hover:text-[#00A1DE]/80">
-                View Analytics
-            </Link>
-          </div>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Complaints Tab */}
+        {/* Complaints Section */}
         {activeTab === "complaints" && (
           <div className="space-y-6">
             {/* Filters */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-                <h2 className="text-lg font-medium text-gray-900 dark:text-white flex items-center mb-4 sm:mb-0">
-                  <Filter className="h-5 w-5 mr-2 text-gray-500 dark:text-gray-400" />
-                  Filters
-                </h2>
-                <button
-                  onClick={() => setFilters({ status: "", category: "", search: "" })}
-                  className="text-sm text-[#00A1DE] hover:text-[#0090c5] flex items-center transition-colors"
-                >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                  Reset Filters
-                </button>
-              </div>
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Filter className="h-5 w-5 mr-2" />
+                  Filters & Search
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Search complaints by ID, description, or location..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
 
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    placeholder="Search complaints..."
-                    value={filters.search}
-                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                    className="w-full px-4 py-2.5 pl-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors"
-                  />
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full lg:w-48">
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="submitted">Submitted</SelectItem>
+                      <SelectItem value="in-progress">In Progress</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={severityFilter} onValueChange={setSeverityFilter}>
+                    <SelectTrigger className="w-full lg:w-48">
+                      <SelectValue placeholder="Filter by severity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Severities</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSearchTerm("")
+                      setStatusFilter("all")
+                      setSeverityFilter("all")
+                    }}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Reset
+                  </Button>
                 </div>
+              </CardContent>
+            </Card>
 
-                <select
-                  value={filters.status}
-                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                  className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors min-w-[160px]"
-                >
-                  <option value="">All Statuses</option>
-                  <option value="submitted">Submitted</option>
-                  <option value="in-progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                </select>
-
-                <select
-                  value={filters.category}
-                  onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-                  className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors min-w-[160px]"
-                >
-                  <option value="">All Categories</option>
-                  <option value="water">Water</option>
-                  <option value="sanitation">Sanitation</option>
-                  <option value="roads">Roads</option>
-                  <option value="electricity">Electricity</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Institution-specific header */}
-            {user.role === "institution" && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-xl border border-blue-200 dark:border-blue-800 mb-6 flex items-start">
-                <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-800 mr-4 mt-0.5">
-                  <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <h2 className="font-medium text-blue-800 dark:text-blue-300 mb-1">Department View</h2>
-                  <p className="text-blue-600 dark:text-blue-400 text-sm">
-                    Showing complaints assigned to your department:{" "}
-                    <span className="font-medium">{user.department}</span>
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Complaints Table */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-750">
-                    <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        ID
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Category
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Status
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Date
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {filteredComplaints?.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center">
-                          <div className="flex flex-col items-center">
-                            <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 mb-3">
-                              <Search className="h-6 w-6 text-gray-400 dark:text-gray-500" />
+            {/* Complaints List */}
+            <div className="space-y-6">
+              {filteredComplaints.map((complaint, index) => (
+                <Card key={index} className="overflow-hidden hover:shadow-lg transition-shadow">
+                  <CardContent className="p-0">
+                    {/* Complaint Header */}
+                    <div className="p-6 border-b border-slate-200">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3 mb-3">
+                            <Badge variant="outline" className="font-mono text-sm">
+                              {complaint.id}
+                            </Badge>
+                            <Badge className={getSeverityColor(complaint.severity)}>
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              {complaint.severity.toUpperCase()}
+                            </Badge>
+                            <Badge className={getStatusColor(complaint.status || "submitted")}>
+                              {complaint.status?.replace("-", " ").toUpperCase() || "SUBMITTED"}
+                            </Badge>
+                            <div className="flex items-center space-x-1">
+                              {getSubmissionIcon(complaint.submissionMethod)}
+                              <span className="text-xs text-slate-600 capitalize">{complaint.submissionMethod}</span>
                             </div>
-                            <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">No complaints found</p>
-                            <p className="text-gray-400 dark:text-gray-500 text-sm">
-                              Try adjusting your search or filter criteria
-                            </p>
                           </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredComplaints?.map((complaint) => (
-                        <React.Fragment key={complaint.id}>
-                          <tr
-                            className={`hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors ${expandedComplaint === complaint.id ? "bg-gray-50 dark:bg-gray-750" : ""}`}
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                              <span className="font-mono">{complaint.id}</span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                              <span className="capitalize">{complaint.aiCategory || complaint.category}</span>
-                              {complaint.aiConfidence && (
-                                <span className="ml-2 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded">
-                                  {complaint.aiConfidence}% AI
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  complaint.status === "submitted"
-                                    ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                                    : complaint.status === "in-progress"
-                                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                                      : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
-                                }`}
-                              >
-                                <div
-                                  className={`h-1.5 w-1.5 rounded-full ${getStatusColor(complaint.status)} mr-1.5`}
-                                />
-                                <span className="capitalize">{complaint.status.replace("-", " ")}</span>
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                              <div className="flex items-center">
-                                <Calendar className="h-3.5 w-3.5 text-gray-400 mr-1.5" />
-                                {new Date(complaint.createdAt).toLocaleDateString()}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                              <div className="flex justify-end space-x-3">
-                                <button
-                                  onClick={() =>
-                                    setExpandedComplaint(expandedComplaint === complaint.id ? null : complaint.id)
-                                  }
-                                  className="text-[#00A1DE] hover:text-[#0090c5] flex items-center transition-colors"
-                                >
-                                  {expandedComplaint === complaint.id ? (
-                                    <ChevronUp className="h-4 w-4 mr-1" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4 mr-1" />
-                                  )}
-                                  {expandedComplaint === complaint.id ? "Hide" : "View"}
-                                </button>
 
-                                {complaint.userPhone && (
-                                  <button
-                                    onClick={() => setShowCustomMessageForm(complaint.id)}
-                                    className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-500 dark:hover:text-emerald-400 flex items-center transition-colors"
-                                    title="Send message to user"
-                                  >
-                                    <MessageSquare className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-
-                          {expandedComplaint === complaint.id && (
-                            <tr>
-                              <td colSpan={5} className="px-0 py-0 bg-gray-50 dark:bg-gray-750">
-                                <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4">
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                      <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3 flex items-center">
-                                        <FileText className="h-4 w-4 text-gray-500 dark:text-gray-400 mr-2" />
-                                        Complaint Details
-                                      </h3>
-                                      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4">
-                                        <p className="text-gray-700 dark:text-gray-300 text-sm">
-                                          {complaint.description}
-                                        </p>
-                                      </div>
-
-                                      {complaint.audioUrl && (
-                                        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4">
-                                          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center">
-                                            <Headphones className="h-3.5 w-3.5 mr-1.5" />
-                                            Audio Recording
-                                          </h4>
-                                          <audio controls className="w-full h-10">
-                                            <source src={complaint.audioUrl} type="audio/webm" />
-                                            Your browser does not support the audio element.
-                                          </audio>
-                                        </div>
-                                      )}
-
-                                      {complaint.videoUrl && (
-  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700 mb-4">
-    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-      Video Recording
-    </h3>
-    <ReactPlayer
-      url={complaint.videoUrl}
-      controls
-      width="100%"
-      height="360px"
-      style={{ maxHeight: 400, background: "#000" }}
-    />
-  </div>
-)}
-
-                                      {complaint.userPhone && (
-                                        <div className="flex items-center text-gray-600 dark:text-gray-400 text-sm mt-3 bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-800">
-                                          <Phone className="h-4 w-4 mr-2 text-blue-500 dark:text-blue-400" />
-                                          <span>User has provided contact information</span>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div>
-                                      <div className="flex justify-between items-center mb-3">
-                                        <h3 className="text-sm font-medium text-gray-900 dark:text-white flex items-center">
-                                          <MapPin className="h-4 w-4 text-gray-500 dark:text-gray-400 mr-2" />
-                                          Location & Status
-                                        </h3>
-                                        <button
-                                          onClick={() => {
-                                            setEditMode(editMode === complaint.id ? null : complaint.id)
-                                            setEditValues({
-                                              status: complaint.status,
-                                              assignedAgency: complaint.assignedAgency,
-                                            })
-                                          }}
-                                          className="text-xs text-[#00A1DE] hover:text-[#0090c5] flex items-center transition-colors"
-                                        >
-                                          {editMode === complaint.id ? (
-                                            <X className="h-3.5 w-3.5 mr-1" />
-                                          ) : (
-                                            <Edit className="h-3.5 w-3.5 mr-1" />
-                                          )}
-                                          {editMode === complaint.id ? "Cancel" : "Edit"}
-                                        </button>
-                                      </div>
-
-                                      {editMode === complaint.id ? (
-                                        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                                              Status
-                                            </label>
-                                            <select
-                                              value={editValues.status || ""}
-                                              onChange={(e) =>
-                                                setEditValues({
-                                                  ...editValues,
-                                                  status: e.target.value as "submitted" | "in-progress" | "resolved",
-                                                })
-                                              }
-                                              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors text-sm"
-                                            >
-                                              <option value="submitted">Submitted</option>
-                                              <option value="in-progress">In Progress</option>
-                                              <option value="resolved">Resolved</option>
-                                            </select>
-                                          </div>
-
-                                          {/* Only admin can change assigned agency */}
-                                          {user.role === "admin" && (
-                                            <div>
-                                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                                                Assigned Agency
-                                              </label>
-                                              <select
-                                                value={editValues.assignedAgency || ""}
-                                                onChange={(e) =>
-                                                  setEditValues({
-                                                    ...editValues,
-                                                    assignedAgency: e.target.value,
-                                                  })
-                                                }
-                                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors text-sm"
-                                              >
-                                                <option value="">Select Institution</option>
-                                                {institutions?.map((institution) => (
-                                                  <option key={institution.id} value={institution.id}>
-                                                    {institution.department}
-                                                  </option>
-                                                ))}
-                                              </select>
-                                            </div>
-                                          )}
-
-                                          <div className="flex justify-end space-x-2 pt-2">
-                                            <button
-                                              onClick={() => setEditMode(null)}
-                                              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                                            >
-                                              Cancel
-                                            </button>
-                                            <button
-                                              onClick={() => updateComplaint(complaint.id, editValues)}
-                                              disabled={isSavingChanges}
-                                              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#00A1DE] hover:bg-[#0090c5] text-white transition-colors flex items-center"
-                                            >
-                                              {isSavingChanges ? (
-                                                <>
-                                                  <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                                                  Saving...
-                                                </>
-                                              ) : (
-                                                "Save Changes"
-                                              )}
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                                          <div className="grid grid-cols-2 gap-4 text-sm">
-                                            <div>
-                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                Status
-                                              </p>
-                                              <div
-                                                className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${getStatusBgColor(complaint.status)}`}
-                                              >
-                                                {getStatusIcon(complaint.status)}
-                                                <span className="capitalize">{complaint.status.replace("-", " ")}</span>
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                Assigned To
-                                              </p>
-                                              <p className="text-gray-900 dark:text-gray-100">
-                                                {complaint.assignedAgency}
-                                              </p>
-                                            </div>
-
-                                            <div>
-                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                District
-                                              </p>
-                                              <p className="text-gray-900 dark:text-gray-100">{complaint.district}</p>
-                                            </div>
-
-                                            <div>
-                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                Sector
-                                              </p>
-                                              <p className="text-gray-900 dark:text-gray-100">{complaint.sector}</p>
-                                            </div>
-
-                                            <div>
-                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                Cell
-                                              </p>
-                                              <p className="text-gray-900 dark:text-gray-100">{complaint.cell}</p>
-                                            </div>
-
-                                            <div>
-                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                Village
-                                              </p>
-                                              <p className="text-gray-900 dark:text-gray-100">
-                                                {complaint.village || "N/A"}
-                                              </p>
-                                            </div>
-                                          </div>
-
-                                          <div className="border-t border-gray-200 dark:border-gray-700 mt-4 pt-4">
-                                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                              <div>
-                                                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                  Created
-                                                </p>
-                                                <p className="text-gray-900 dark:text-gray-100">
-                                                  {formatDate(complaint.createdAt)}
-                                                </p>
-                                              </div>
-
-                                              <div>
-                                                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                  Last Updated
-                                                </p>
-                                                <p className="text-gray-900 dark:text-gray-100">
-                                                  {formatDate(complaint.updatedAt)}
-                                                </p>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <h3 className="text-lg font-semibold text-slate-900 mb-2 cursor-pointer hover:text-blue-600 transition-colors">
+                                {complaint.translatedDescription.length > 100
+                                  ? `${complaint.translatedDescription.substring(0, 100)}...`
+                                  : complaint.translatedDescription}
+                              </h3>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>Complaint Details - {complaint.id}</DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <Label className="text-sm font-medium text-slate-600">Full Description</Label>
+                                  <p className="text-slate-900 mt-2 p-4 bg-slate-50 rounded-lg">
+                                    {complaint.translatedDescription}
+                                  </p>
                                 </div>
-                              </td>
-                            </tr>
-                          )}
-
-                          {/* Custom message form */}
-                          {showCustomMessageForm === complaint.id && (
-                            <tr>
-                              <td colSpan={5} className="px-0 py-0">
-                                <div className="border-t border-gray-200 dark:border-gray-700 bg-emerald-50 dark:bg-emerald-900/20 px-6 py-4">
+                                <div className="grid grid-cols-2 gap-4">
                                   <div>
-                                    <h3 className="text-sm font-medium text-emerald-800 dark:text-emerald-300 mb-3 flex items-center">
-                                      <MessageSquare className="h-4 w-4 mr-2" />
-                                      Send Custom SMS to User
-                                    </h3>
-                                    <div className="flex flex-col gap-3">
-                                      <textarea
-                                        value={customMessage}
-                                        onChange={(e) => setCustomMessage(e.target.value)}
-                                        placeholder="Type your message here..."
-                                        className="w-full px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors text-sm h-24 resize-none"
-                                      />
-                                      <div className="text-xs text-emerald-700 dark:text-emerald-400 flex items-start">
-                                        <AlertTriangle className="h-3.5 w-3.5 mr-1.5 flex-shrink-0 mt-0.5" />
-                                        Keep messages concise and polite. Avoid including sensitive information.
-                                      </div>
-                                      <div className="flex justify-end space-x-2">
-                                        <button
-                                          onClick={() => {
-                                            setShowCustomMessageForm(null)
-                                            setCustomMessage("")
-                                          }}
-                                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                                          disabled={sendingNotification}
-                                        >
-                                          Cancel
-                                        </button>
-                                        <button
-                                          onClick={() => sendCustomSMSToUser(complaint.id)}
-                                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center"
-                                          disabled={!customMessage || sendingNotification}
-                                        >
-                                          {sendingNotification ? (
-                                            <>
-                                              <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                                              Sending...
-                                            </>
-                                          ) : (
-                                            <>
-                                              <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-                                              Send SMS
-                                            </>
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
+                                    <Label className="text-sm font-medium text-slate-600">Category</Label>
+                                    <p className="text-slate-900">{complaint.aiCategory}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium text-slate-600">Severity</Label>
+                                    <Badge className={getSeverityColor(complaint.severity)}>
+                                      {complaint.severity.toUpperCase()}
+                                    </Badge>
                                   </div>
                                 </div>
-                              </td>
-                            </tr>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+
+                          <div className="flex items-center space-x-6 text-sm text-slate-600">
+                            <div className="flex items-center">
+                              <MapPin className="h-4 w-4 mr-1" />
+                              {complaint.district}, {complaint.sector}, {complaint.cell}
+                            </div>
+                            <div className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-1" />
+                              {complaint.createdAt && complaint.createdAt["$date"]
+                                        ? new Date(complaint.createdAt["$date"]).toLocaleString()
+                                        : ""}
+                            </div>
+                            <div className="flex items-center">
+                              <Brain className="h-4 w-4 mr-1" />
+                              AI: {complaint.aiConfidence}% confident
+                            </div>
+                            <div className="flex items-center">
+                              <Star className="h-4 w-4 mr-1 text-yellow-500" />
+                              {complaint.pointsAwarded} points
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          {complaint.userPhone && (
+                            <Dialog open={showMessageDialog} onOpenChange={setShowMessageDialog}>
+                              <DialogTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <MessageSquare className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Send Message to Citizen</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <Label htmlFor="message">Custom Message</Label>
+                                    <Textarea
+                                      id="message"
+                                      placeholder="Type your message here..."
+                                      value={customMessage}
+                                      onChange={(e) => setCustomMessage(e.target.value)}
+                                    />
+                                  </div>
+                                  <Button className="w-full">
+                                    <Send className="h-4 w-4 mr-2" />
+                                    Send SMS
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           )}
-                        </React.Fragment>
-                      ))
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setExpandedComplaint(expandedComplaint === complaint.id ? null : complaint.id)
+                            }
+                          >
+                            {expandedComplaint === complaint.id ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded Details */}
+                    {expandedComplaint === complaint.id && (
+                      <div className="p-6 bg-slate-50">
+                        <Tabs defaultValue="ai-analysis" className="w-full">
+                          <TabsList className="grid w-full grid-cols-4">
+                            <TabsTrigger value="ai-analysis">AI Analysis</TabsTrigger>
+                            <TabsTrigger value="location">Location</TabsTrigger>
+                            <TabsTrigger value="actions">Actions</TabsTrigger>
+                            <TabsTrigger value="management">Management</TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="ai-analysis" className="space-y-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                              {/* AI Confidence */}
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="flex items-center text-lg">
+                                    <Brain className="h-5 w-5 mr-2 text-purple-600" />
+                                    AI Analysis
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                  <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-sm font-medium">Confidence Level</span>
+                                      <span className="text-sm font-bold">{complaint.aiConfidence}%</span>
+                                    </div>
+                                    <Progress value={complaint.aiConfidence} className="h-2" />
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-medium">AI Category:</span>
+                                    <Badge className="ml-2" variant="secondary">
+                                      {complaint.aiCategory}
+                                    </Badge>
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-medium">Original Category:</span>
+                                    <Badge className="ml-2" variant="outline">
+                                      {complaint.category}
+                                    </Badge>
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-medium">Language:</span>
+                                    <Badge className="ml-2" variant="outline">
+                                      {complaint.language ? complaint.language.toUpperCase() : "N/A"}
+                                    </Badge>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              {/* Effects */}
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="flex items-center text-lg">
+                                    <Zap className="h-5 w-5 mr-2 text-orange-600" />
+                                    Identified Effects
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <ul className="space-y-2">
+                                    {complaint.effects.map((effect, index) => (
+                                      <li key={index} className="flex items-start">
+                                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 mr-3 flex-shrink-0" />
+                                        <span className="text-sm text-slate-700">{effect}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </CardContent>
+                              </Card>
+
+                              {/* Consequences */}
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="flex items-center text-lg">
+                                    <AlertTriangle className="h-5 w-5 mr-2 text-red-600" />
+                                    Potential Consequences
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <ul className="space-y-2">
+                                    {complaint.consequences.map((consequence, index) => (
+                                      <li key={index} className="flex items-start">
+                                        <div className="w-2 h-2 bg-red-400 rounded-full mt-2 mr-3 flex-shrink-0" />
+                                        <span className="text-sm text-slate-700">{consequence}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </CardContent>
+                              </Card>
+
+                              {/* Suggested Actions */}
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="flex items-center text-lg">
+                                    <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
+                                    AI Suggested Actions
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <ul className="space-y-2">
+                                    {complaint.suggestedActions.map((action, index) => (
+                                      <li key={index} className="flex items-start">
+                                        <div className="w-2 h-2 bg-green-400 rounded-full mt-2 mr-3 flex-shrink-0" />
+                                        <span className="text-sm text-slate-700">{action}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          </TabsContent>
+
+                          <TabsContent value="location" className="space-y-4">
+                            <Card>
+                              <CardHeader>
+                                <CardTitle className="flex items-center">
+                                  <MapPin className="h-5 w-5 mr-2" />
+                                  Location Details
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <Label className="text-sm font-medium text-slate-600">District</Label>
+                                    <p className="text-lg font-semibold">{complaint.district}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium text-slate-600">Sector</Label>
+                                    <p className="text-lg font-semibold">{complaint.sector}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium text-slate-600">Cell</Label>
+                                    <p className="text-lg font-semibold">{complaint.cell}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium text-slate-600">Coordinates</Label>
+                                    <p className="text-sm font-mono bg-slate-100 p-2 rounded">
+                                      {complaint.coordinates}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="bg-slate-100 h-48 rounded-lg flex items-center justify-center">
+                                  <p className="text-slate-500">Map visualization would appear here</p>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </TabsContent>
+
+                          <TabsContent value="actions" className="space-y-4">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {/* Update Status Card */}
+    <Card>
+          <CardHeader>
+            <CardTitle>Update Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Select
+  value={getCurrentStatus(complaint)}
+  onValueChange={value => setComplaintUpdate(complaint._id, "status", value)}
+>
+              <SelectTrigger>
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="submitted">Submitted</SelectItem>
+                <SelectItem value="in-progress">In Progress</SelectItem>
+                <SelectItem value="resolved">Resolved</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              className="w-full"
+              onClick={() =>
+                updateComplaint(complaint._id, {
+                  status: getCurrentStatus(complaint),
+                  assignedAgency: getCurrentAssignedAgency(complaint),
+                })
+              }
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Update Status
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Assign Agency Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Assign Agency</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Select
+  value={getCurrentAssignedAgency(complaint)}
+  onValueChange={value => setComplaintUpdate(complaint._id, "assignedAgency", value)}
+>
+              <SelectTrigger>
+                <SelectValue placeholder="Select agency" />
+              </SelectTrigger>
+              <SelectContent>
+                {institutions.map(inst => (
+  <SelectItem key={inst._id} value={inst.department || inst.name}>
+    {inst.department || inst.name}
+  </SelectItem>
+))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="w-full"
+              variant="outline"
+               onClick={() => updateComplaint(complaint._id, { status, assignedAgency })}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              Assign Agency
+            </Button>
+          </CardContent>
+        </Card>
+  </div>
+</TabsContent>
+
+                          <TabsContent value="management" className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-sm">Submission Details</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2">
+                                  <div className="flex justify-between">
+                                    <span className="text-sm text-slate-600">Method:</span>
+                                    <div className="flex items-center">
+                                      {getSubmissionIcon(complaint.submissionMethod)}
+                                      <span className="ml-1 text-sm capitalize">{complaint.submissionMethod}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-sm text-slate-600">Points:</span>
+                                    <span className="text-sm font-semibold">{complaint.pointsAwarded}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-sm text-slate-600">Language:</span>
+                                    <span className="text-sm">{complaint.language ? complaint.language.toUpperCase() : "N/A"}</span>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-sm">Timeline</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2">
+                                  <div>
+                                    <span className="text-xs text-slate-500">Created:</span>
+                                    <p className="text-sm">
+                                      {complaint.createdAt
+                                        ? new Date(complaint.createdAt).toLocaleString()
+                                        : ""}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-xs text-slate-500">Updated:</span>
+                                    <p className="text-sm">{complaint.updatedAt
+                                        ? new Date(complaint.updatedAt).toLocaleString()
+                                        : ""}</p>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-sm">Contact Info</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2">
+                                  {complaint.user ? (
+  <div className="space-y-1">
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-600">Name:</span>
+      <span className="text-sm font-mono">{complaint.user.name || "N/A"}</span>
+    </div>
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-600">Email:</span>
+      <span className="text-sm font-mono">{complaint.user.email || "N/A"}</span>
+    </div>
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-600">Phone:</span>
+      <span className="text-sm font-mono">{complaint.user.phone || "N/A"}</span>
+    </div>
+  </div>
+) : (
+  <p className="text-sm text-slate-500">No contact info provided</p>
+                                  )}
+                                  <Button size="sm" className="w-full" variant="outline">
+                                    <Phone className="h-4 w-4 mr-2" />
+                                    Contact Citizen
+                                  </Button>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          </TabsContent>
+                        </Tabs>
+                      </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
+
+            {filteredComplaints.length === 0 && (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Search className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">No complaints found</h3>
+                  <p className="text-slate-600">Try adjusting your search criteria or filters</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
-        {/* Institutions Tab - Admin Only */}
-        {activeTab === "institutions" && user.role === "admin" && (
+        {/* Institutions Tab */}
+        {activeTab === "institutions" && (
           <div className="space-y-6">
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowInstitutionForm(true)}
-                className="px-4 py-2 rounded-lg bg-[#00A1DE] hover:bg-[#0090c5] text-white font-medium text-sm flex items-center transition-colors"
-              >
-                <UserPlus className="h-4 w-4 mr-2" />
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-slate-900">Institution Management</h2>
+              <Button onClick={() => setShowInstitutionForm(true)}>
+                <Users className="h-4 w-4 mr-2" />
                 Add Institution
-              </button>
+              </Button>
             </div>
 
             {/* Institution Creation Form */}
             {showInstitutionForm && (
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
-                  {editInstitution ? (
-                    <>
-                      <Edit className="h-5 w-5 mr-2 text-[#00A1DE]" />
-                      Edit Institution
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="h-5 w-5 mr-2 text-[#00A1DE]" />
-                      Add New Institution
-                    </>
-                  )}
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Institution Name
-                    </label>
-                    <input
-                      type="text"
-                      value={editInstitution?.name || newInstitution.name}
-                      onChange={(e) =>
-                        editInstitution
-                          ? setEditInstitution({ ...editInstitution, name: e.target.value })
-                          : setNewInstitution({ ...newInstitution, name: e.target.value })
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors"
-                      placeholder="Enter institution name"
-                    />
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    {editInstitution ? (
+                      <>
+                        <Edit className="h-5 w-5 mr-2 text-blue-600" />
+                        Edit Institution
+                      </>
+                    ) : (
+                      <>
+                        <Users className="h-5 w-5 mr-2 text-blue-600" />
+                        Add New Institution
+                      </>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <Label>Institution Name</Label>
+                      <Input
+                        value={editInstitution?.name || newInstitution.name}
+                        onChange={(e) =>
+                          editInstitution
+                            ? setEditInstitution({ ...editInstitution, name: e.target.value })
+                            : setNewInstitution({ ...newInstitution, name: e.target.value })
+                        }
+                        placeholder="Enter institution name"
+                      />
+                    </div>
+                    <div>
+                      <Label>Email Address</Label>
+                      <Input
+                        type="email"
+                        value={editInstitution?.email || newInstitution.email}
+                        onChange={(e) =>
+                          editInstitution
+                            ? setEditInstitution({ ...editInstitution, email: e.target.value })
+                            : setNewInstitution({ ...newInstitution, email: e.target.value })
+                        }
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    <div>
+                      <Label>Phone Number</Label>
+                      <Input
+                        value={editInstitution?.phone || newInstitution.phone}
+                        onChange={(e) =>
+                          editInstitution
+                            ? setEditInstitution({ ...editInstitution, phone: e.target.value })
+                            : setNewInstitution({ ...newInstitution, phone: e.target.value })
+                        }
+                        placeholder="+250 7XX XXX XXX"
+                      />
+                    </div>
+                    <div>
+                      <Label>Department</Label>
+                      <Input
+                        value={editInstitution?.department || newInstitution.department}
+                        onChange={(e) =>
+                          editInstitution
+                            ? setEditInstitution({ ...editInstitution, department: e.target.value })
+                            : setNewInstitution({ ...newInstitution, department: e.target.value })
+                        }
+                        placeholder="e.g. Water & Sanitation"
+                      />
+                    </div>
+                    <div>
+                      <Label>Role</Label>
+                      <Select
+                        value={editInstitution?.role || newInstitution.role}
+                        onValueChange={(value: "admin" | "institution") =>
+                          editInstitution
+                            ? setEditInstitution({ ...editInstitution, role: value })
+                            : setNewInstitution({ ...newInstitution, role: value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="institution">Institution</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={editInstitution?.email || newInstitution.email}
-                      onChange={(e) =>
-                        editInstitution
-                          ? setEditInstitution({ ...editInstitution, email: e.target.value })
-                          : setNewInstitution({ ...newInstitution, email: e.target.value })
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors"
-                      placeholder="email@example.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Phone Number
-                    </label>
-                    <input
-                      type="text"
-                      value={editInstitution?.phone || newInstitution.phone}
-                      onChange={(e) =>
-                        editInstitution
-                          ? setEditInstitution({ ...editInstitution, phone: e.target.value })
-                          : setNewInstitution({ ...newInstitution, phone: e.target.value })
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors"
-                      placeholder="+250 7XX XXX XXX"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Department
-                    </label>
-                    <input
-                      type="text"
-                      value={editInstitution?.department || newInstitution.department}
-                      onChange={(e) =>
-                        editInstitution
-                          ? setEditInstitution({ ...editInstitution, department: e.target.value })
-                          : setNewInstitution({ ...newInstitution, department: e.target.value })
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors"
-                      placeholder="e.g. Water & Sanitation"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Role</label>
-                    <select
-                      value={editInstitution?.role || newInstitution.role}
-                      onChange={(e) =>
-                        editInstitution
-                          ? setEditInstitution({ ...editInstitution, role: e.target.value as "admin" | "institution" })
-                          : setNewInstitution({ ...newInstitution, role: e.target.value as "admin" | "institution" })
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#00A1DE] focus:border-transparent transition-colors"
+                  <div className="flex justify-end space-x-3 mt-6">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowInstitutionForm(false)
+                        setEditInstitution(null)
+                      }}
                     >
-                      <option value="institution">Institution</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                      Cancel
+                    </Button>
+                    <Button onClick={editInstitution ? updateInstitution : createInstitution}>
+                      {editInstitution ? "Update Institution" : "Create Institution"}
+                    </Button>
                   </div>
-                </div>
-                <div className="flex justify-end space-x-3 mt-6">
-                  <button
-                    onClick={() => {
-                      setShowInstitutionForm(false)
-                      setEditInstitution(null)
-                    }}
-                    className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={editInstitution ? updateInstitution : createInstitution}
-                    className="px-4 py-2 rounded-lg bg-[#00A1DE] hover:bg-[#0090c5] text-white font-medium text-sm transition-colors"
-                  >
-                    {editInstitution ? "Update Institution" : "Create Institution"}
-                  </button>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* Institutions Table */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-750">
-                    <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Name
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Email
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Phone
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Department
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Role
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3.5 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                      >
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {institutions?.length === 0 ? (
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
                       <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center">
-                          <div className="flex flex-col items-center">
-                            <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 mb-3">
-                              <Users className="h-6 w-6 text-gray-400 dark:text-gray-500" />
-                            </div>
-                            <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">No institutions found</p>
-                            <p className="text-gray-400 dark:text-gray-500 text-sm">
-                              Click "Add Institution" to create one
-                            </p>
-                          </div>
-                        </td>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                          Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                          Email
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                          Phone
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                          Department
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                          Role
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
-                    ) : (
-                      institutions?.map((institution, index) => (
-                        <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                            {institution.name}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                            {institution.email}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                            {institution.phone}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                            {institution.department}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                institution.role === "admin"
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
-                                  : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                              }`}
-                            >
-                              <span className="capitalize">{institution.role}</span>
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                            <div className="flex justify-end space-x-3">
-                              <button
-                                onClick={() => {
-                                  setEditInstitution(institution)
-                                  setShowInstitutionForm(true)
-                                }}
-                                className="text-[#00A1DE] hover:text-[#0090c5] transition-colors"
-                                title="Edit"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => deleteInstitution(institution.id)}
-                                className="text-red-600 hover:text-red-700 dark:text-red-500 dark:hover:text-red-400 transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-200">
+                      {institutions.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center">
+                            <div className="flex flex-col items-center">
+                              <Users className="h-12 w-12 text-slate-400 mb-4" />
+                              <h3 className="text-lg font-semibold text-slate-900 mb-2">No institutions found</h3>
+                              <p className="text-slate-600">Click "Add Institution" to create one</p>
                             </div>
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                      ) : (
+                        institutions
+                          .filter((institution) =>
+                            (institution.name ?? "").toLowerCase().includes(searchTerm.toLowerCase())
+                          )
+                          .map((institution) => (
+                            <tr key={institution.id} className="hover:bg-slate-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
+                                {institution.name}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                                {institution.email}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                                {institution.phone}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                                {typeof institution.department === "string"
+                                  ? institution.department.toUpperCase()
+                                  : "N/A"}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                <Badge
+                                  className={
+                                    institution.role === "admin"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-blue-100 text-blue-800"
+                                  }
+                                >
+                                  {institution.role}
+                                </Badge>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                <div className="flex justify-end space-x-3">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditInstitution(institution)
+                                      setShowInstitutionForm(true)
+                                    }}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteInstitution(institution.id)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>

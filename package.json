@@ -46,6 +46,7 @@
     "canvas-confetti": "^1.9.3",
     "chart.js": "^4.4.9",
     "class-variance-authority": "^0.7.1",
+    "cloudinary": "^2.6.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",

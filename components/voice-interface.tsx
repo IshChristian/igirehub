@@ -42,31 +42,56 @@ export default function VoiceInterface() {
   }
 
   const uploadAudio = async () => {
-    try {
-      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" })
-      const formData = new FormData()
-      formData.append("audio", audioBlob, "complaint.webm")
-
-      const response = await fetch("/api/submit-complaint", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: formData,
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        setStatus("success")
-      } else {
-        throw new Error(data.error || "Upload failed")
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Submission failed")
-      setStatus("error")
+  try {
+    const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+    const formData = new FormData()
+    formData.append("audio", audioBlob, "complaint.webm")
+    
+    console.log("Uploading audio to:", "http://localhost:3000/api/submit-complaints")
+    
+    const response = await fetch("http://localhost:3000/api/submit-complaints", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+        // Don't set Content-Type header - let browser set it for FormData
+      },
+      body: formData,
+    })
+    
+    console.log("Response status:", response.status)
+    console.log("Response headers:", Object.fromEntries(response.headers.entries()))
+    
+    // Check if response is actually JSON
+    const contentType = response.headers.get("content-type")
+    if (!contentType?.includes("application/json")) {
+      const textResponse = await response.text()
+      console.error("Non-JSON response:", textResponse)
+      throw new Error(`Server returned invalid response. Status: ${response.status}. Response: ${textResponse.substring(0, 200)}...`)
     }
+    
+    let data
+    try {
+      data = await response.json()
+    } catch (jsonError) {
+      const textResponse = await response.text()
+      console.error("JSON parse error:", jsonError)
+      console.error("Response text:", textResponse)
+      throw new Error(`Server returned invalid JSON response. Status Code ${response.status}. Response: ${textResponse.substring(0, 200)}...`)
+    }
+    
+    if (!response.ok) {
+      throw new Error(data?.error || `Failed to submit complaint. Status: ${response.status}`)
+    }
+    
+    console.log("Upload successful:", data)
+    setStatus("success")
+    
+  } catch (err) {
+    console.error("Upload error:", err)
+    setError(err instanceof Error ? err.message : "Submission failed")
+    setStatus("error")
   }
+}
 
   const resetForm = () => {
     setStatus("idle")

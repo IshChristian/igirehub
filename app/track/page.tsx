@@ -438,6 +438,7 @@ export default function TrackPage() {
                               <source src={selectedComplaint.audioUrl} type="audio/webm" />
                               Your browser does not support the audio element.
                             </audio>
+                            <audio src={selectedComplaint.audioUrl} type="audio/webm"></audio>
                           </div>
                         )}
 
